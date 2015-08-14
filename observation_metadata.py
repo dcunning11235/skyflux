@@ -8,9 +8,11 @@ import bossdata.path as bdpath
 import bossdata.remote as bdremote
 import bossdata.spec as bdspec
 
+from progressbar import ProgressBar, Percentage, Bar
+
 '''
 This script takes in a list of plate-mjd combos (as output by e.g. bossquery for
-    bossquery --what "PLATE,MJD" --what "PLATE<=3650 and FIBER=1" --save some_plates.dat
+    bossquery --what "PLATE,MJD" --where "PLATE<=4500 and FIBER=1" --save plate_mjd_to_4500.dat
 
 It walks the list and outputs metadata about the exposures that make up those plates; it does
 this by looking at metadata in (full) spec files for fibers 1 and 501.  Since there there
@@ -69,6 +71,8 @@ def main():
         exposure_table_list = []
         exposure_table = None
 
+        progress_bar = ProgressBar(widgets=[Percentage(), Bar()], maxval=len(plates_table)).start()
+        counter = 0
         for row in plates_table:
             exposure_data = file_deets(row['PLATE'], row['MJD'], 1, gather=True)
             if exposure_data is not None:
@@ -76,7 +80,10 @@ def main():
             exposure_data = file_deets(row['PLATE'], row['MJD'], 2, gather=True)
             if exposure_data is not None:
                 exposure_table_list.append(Table(exposure_data))
-
+            counter += 1
+            progress_bar.update(counter)
+        progress_bar.finish()
+        
         if len(exposure_table_list):
             if len(exposure_table_list) > 1:
                 exposure_table = vstack(exposure_table_list)
