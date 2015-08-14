@@ -9,6 +9,24 @@ from speclite import accumulate
 from speclite import resample
 import matplotlib.pyplot as plt
 
+'''
+This script takes in a list of plate-mjd-fiber combos as output by e.g. bossquery for
+bossquery --what "PLATE,MJD,FIBER" \
+--where "OBJTYPE='SKY' and THING_ID=-1 and ZWARNING in (1,5) and PLATE between 4501 and 6000" \
+--sort "PLATE,MJD,FIBER" --full --max-rows 10000000 --save sky_fibers_4501_to_6000.dat
+
+It groups entries in this list by plate-mjd, then stacks the spectra for all fibers
+in each group, per exposure (so you end up with 7 sky spectra for the 79 fibers in the
+plate-mjd 3586-55181.)
+
+Since it works with exposures and no co-adds, it must process the data a bit in order to be
+able to stack it:  namely, resample to a regular wavelength spacing (0.975 A) over a standard
+range (3500.26 to 10422.76), combining the red and blue cameras.
+
+Each of these combined sky specta is then saved out as a CSV file named:
+    stacked_sky_{plate}-{mjd}-exp{exposure:02d}.csv
+'''
+
 finder = bdpath.Finder()
 manager = bdremote.Manager()
 
