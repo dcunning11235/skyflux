@@ -82,7 +82,7 @@ def main():
                 exposure_table = vstack(exposure_table_list)
             else:
                 exposure_table = exposure_table_list[0]
-            exposure_table.write("exposure_metadata.dat", format="ascii")
+            exposure_table.write("exposure_metadata.csv", format="ascii.csv")
 
 if __name__ == '__main__':
     main()
