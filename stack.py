@@ -9,6 +9,8 @@ from speclite import accumulate
 from speclite import resample
 import matplotlib.pyplot as plt
 
+from progressbar import ProgressBar, Percentage, Bar
+
 '''
 This script takes in a list of plate-mjd-fiber combos as output by e.g. bossquery for
 bossquery --what "PLATE,MJD,FIBER" \
@@ -99,9 +101,16 @@ def save_stacks(stacks, fiber_group, exposure):
 def main():
         sky_fibers_table = Table.read(sys.argv[1], format='ascii')
         sky_fibers_table = sky_fibers_table.group_by(["PLATE", "MJD"])
+
+        progress_bar = ProgressBar(widgets=[Percentage(), Bar()], maxval=len(sky_fibers_table)).start()
+        counter = 0
+
         for group in sky_fibers_table.groups:
             exposures, stacks = stack_exposures(group)
             save_stacks(stacks, group, exposures)
+            counter += len(group)
+            progress_bar.update(counter)
+        progress_bar.finish()
 
 if __name__ == '__main__':
     main()
