@@ -143,7 +143,7 @@ def main():
     obs_md_table.rename_column("MG_APP", "LUNAR_MAGNITUDE")
     obs_md_table.rename_column("ELV_APP", "LUNAR_ELV")
     obs_md_table.remove_columns(['RA_APP', 'DEC_APP'])
-    print obs_md_table
+    #print obs_md_table
 
     #Join solar data to the table
     obs_md_table = join(obs_md_table, solar_md_table['EPHEM_DATE', 'RA_APP', 'DEC_APP', 'ELV_APP'])
