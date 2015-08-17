@@ -1,0 +1,142 @@
+import numpy as np
+from astropy.table import Table
+from astropy.table import Column
+from astropy.table import vstack
+from astropy.table import join
+import astropy.coordinates as ascoord
+import sys
+import datetime as dt
+import bossdata.path as bdpath
+import bossdata.remote as bdremote
+import bossdata.spec as bdspec
+
+from progressbar import ProgressBar, Percentage, Bar
+
+ephemeris_block_size_minutes = 15
+ephemeris_block_size = dt.timedelta(minutes=ephemeris_block_size_minutes)
+ephemeris_max_block_size = dt.timedelta(minutes=1.5*ephemeris_block_size_minutes)
+
+def find_ephemeris_lookup_date(tai_beg, tai_end):
+    '''
+    Want to find the 15-minute increment (0, 15, 30, 45) that is sandwiched between the two
+    passed datetimes.  However, spans can be less than 15 minutes, so also need handle this
+    case; here, will round to whichever increment has the smallest delta between tai_beg
+    and tai_end.  I've not seen it, but I have to assume that spans can also be longer than
+    15 minutes.
+    '''
+    vectfunc = np.vectorize(tai_str_to_datetime)
+    tai_end_dt = vectfunc(tai_end)
+    tai_beg_dt = vectfunc(tai_beg)
+
+    vectfunc = np.vectorize(get_ephemeris_block_in_interval)
+    mask = (tai_end_dt - tai_beg_dt) < ephemeris_max_block_size
+    ret = np.zeros((len(tai_end_dt),), dtype=dt.datetime)
+    ret[mask] = vectfunc(tai_beg_dt[mask], tai_end_dt[mask])
+
+    def _lookup_str_format(dt):
+        return dt.strftime("%Y-%b-%d %H:%M")
+
+    vectfunc = np.vectorize(_lookup_str_format)
+    ret = vectfunc(ret)
+
+    return ret
+
+def get_ephemeris_block_in_interval(tai_beg, tai_end):
+    tai_end_dt = tai_str_to_datetime(tai_end)
+    tai_beg_dt = tai_str_to_datetime(tai_beg)
+    tai_beg_block = round_tai(tai_beg_dt)
+    tai_end_block = round_tai(tai_end_dt)
+
+    if tai_beg_block < tai_end_dt  and  tai_beg_block >= tai_beg_dt:
+        return tai_beg_block
+    elif tai_end_block < tai_end_dt  and  tai_end_block >= tai_beg_dt:
+        return tai_end_block
+    else:
+        end_delta = get_tai_block_delta(tai_end_dt, "down")
+        beg_delta = get_tai_block_delta(tai_beg_dt, "up")
+        if abs(beg_delta) < abs(end_delta):
+            return tai_beg_dt + beg_delta
+        else:
+            return tai_end_dt + end_delta
+
+def tai_str_to_datetime(tai):
+    if isinstance(tai, basestring):
+        if tai.count(':') == 2:
+            if tai.count('.') == 1:
+                tai = dt.datetime.strptime(tai, "%Y-%m-%d %H:%M:%S.%f")
+                tai = tai.replace(microsecond=0)
+            else:
+                tai = dt.datetime.strptime(tai, "%Y-%m-%d %H:%M:%S")
+        elif tai.count(':') == 1:
+            tai = dt.datetime.strptime(tai, "%Y-%m-%d %H:%M")
+
+    return tai
+
+def get_tai_block_delta(tai, direction="closest"):
+    tai = tai_str_to_datetime(tai)
+
+    delta_mins = - ((tai.minute % ephemeris_block_size_minutes) + (tai.second / 60.0))
+    if direction == 'closest':
+        if delta_mins <= -ephemeris_block_size_minutes/2:
+            delta_mins = ephemeris_block_size_minutes + delta_mins
+    elif direction == 'down':
+        #nada
+        True
+    elif direction == 'up':
+        delta_mins = ephemeris_block_size_minutes + delta_mins
+
+    return dt.timedelta(minutes=delta_mins)
+
+def round_tai(tai):
+    tai = tai_str_to_datetime(tai)
+    tdelta = get_tai_block_delta(tai)
+
+    return tai + tdelta
+
+def main():
+    obs_md_table = Table.read(sys.argv[1], format="ascii")
+    lunar_md_table = Table.read(sys.argv[2], format="ascii")
+    lunar_md_table.rename_column('UTC', 'EPHEM_DATE')
+    solar_md_table = Table.read(sys.argv[3], format="ascii")
+    solar_md_table.rename_column('UTC', 'EPHEM_DATE')
+
+    lookup_date = find_ephemeris_lookup_date(obs_md_table['TAI-BEG'], obs_md_table['TAI-END'])
+    ephem_date_col = Column(lookup_date, name="EPHEM_DATE")
+    obs_md_table.add_column(ephem_date_col)
+
+    def _get_separation(start, end):
+        return start.separation(end).degree
+    vectfunc = np.vectorize(_get_separation)
+
+    boresight_ra_dec = ascoord.SkyCoord(ra=obs_md_table['RA'], dec=obs_md_table['DEC'], unit='deg', frame='fk5')
+
+    join_table = Table()
+    join_table.add_column(ephem_date_col)
+
+    #Join lunar data to the table
+    join_table = join(join_table, lunar_md_table['EPHEM_DATE', 'RA_APP', 'DEC_APP', 'MG_APP', 'ELV_APP'])
+    target_ra_dec = ascoord.SkyCoord(ra=join_table['RA_APP'], dec=join_table['DEC_APP'], unit='deg', frame='icrs')
+
+    separations = vectfunc(boresight_ra_dec, target_ra_dec)
+
+    join_table.add_column(Column(separations, name="LUNAR_SEP"))
+    join_table.rename_column("MG_APP", "LUNAR_MAGNITUDE")
+    join_table.rename_column("ELV_APP", "LUNAR_ELV")
+    join_table.remove_columns(['RA_APP', 'DEC_APP'])
+
+    #Join solar data to the table
+    join_table = join(join_table, solar_md_table['EPHEM_DATE', 'RA_APP', 'DEC_APP', 'ELV_APP'])
+    target_ra_dec = ascoord.SkyCoord(ra=join_table['RA_APP'], dec=join_table['DEC_APP'], unit='deg', frame='icrs')
+
+    separations = vectfunc(boresight_ra_dec, target_ra_dec)
+
+    join_table.add_column(Column(separations, name="SOLAR_SEP"))
+    join_table.rename_column("ELV_APP", "SOLAR_ELV")
+    join_table.remove_columns(['RA_APP', 'DEC_APP'])
+
+
+    obs_md_table = join(obs_md_table, join_table)
+    obs_md_table.write("annnotated_metadata.csv", format="ascii.csv")
+
+if __name__ == '__main__':
+    main()
