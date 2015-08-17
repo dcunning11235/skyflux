@@ -104,38 +104,71 @@ def main():
     ephem_date_col = Column(lookup_date, name="EPHEM_DATE")
     obs_md_table.add_column(ephem_date_col)
 
-    def _get_separation(start, end):
+    def _get_separation(start, end, cache=None):
+        if cache is not None:
+            if cache.has_key((start,end)):
+                return cache.get((start,end))
+            else:
+                val = start.separation(end).degree
+                cache[(start,end)] = val
+                return val
         return start.separation(end).degree
-    vectfunc = np.vectorize(_get_separation)
+
+    separation_vectfunc = np.vectorize(_get_separation)
 
     boresight_ra_dec = ascoord.SkyCoord(ra=obs_md_table['RA'], dec=obs_md_table['DEC'], unit='deg', frame='fk5')
+    galactic_core = ascoord.SkyCoord(l=0.0, b=0.0, unit='deg', frame='galactic')
 
-    join_table = Table()
-    join_table.add_column(ephem_date_col)
+    def _get_galactic_plane_separation(start, cache=None):
+        if cache is not None:
+            if cache.has_key(start):
+                return cache.get(start)
+            else:
+                val = start.transform_to('galactic').b.degree
+                cache[start] = val
+                return val
+        return start.transform_to('galactic').b.degree
+
+    plane_separation_vectfunc = np.vectorize(_get_galactic_plane_separation)
 
     #Join lunar data to the table
-    join_table = join(join_table, lunar_md_table['EPHEM_DATE', 'RA_APP', 'DEC_APP', 'MG_APP', 'ELV_APP'])
-    target_ra_dec = ascoord.SkyCoord(ra=join_table['RA_APP'], dec=join_table['DEC_APP'], unit='deg', frame='icrs')
+    obs_md_table = join(obs_md_table, lunar_md_table['EPHEM_DATE', 'RA_APP', 'DEC_APP', 'MG_APP', 'ELV_APP'])
+    print obs_md_table
+    cache = {}
+    obs_md_table.add_column(Column(separation_vectfunc(boresight_ra_dec,
+                                        ascoord.SkyCoord(ra=obs_md_table['RA_APP'], dec=obs_md_table['DEC_APP'], unit='deg', frame='icrs'),
+                                        cache),
+                                    dtype=float, name="LUNAR_SEP"))
 
-    separations = vectfunc(boresight_ra_dec, target_ra_dec)
-
-    join_table.add_column(Column(separations, name="LUNAR_SEP"))
-    join_table.rename_column("MG_APP", "LUNAR_MAGNITUDE")
-    join_table.rename_column("ELV_APP", "LUNAR_ELV")
-    join_table.remove_columns(['RA_APP', 'DEC_APP'])
+    obs_md_table.rename_column("MG_APP", "LUNAR_MAGNITUDE")
+    obs_md_table.rename_column("ELV_APP", "LUNAR_ELV")
+    obs_md_table.remove_columns(['RA_APP', 'DEC_APP'])
+    print obs_md_table
 
     #Join solar data to the table
-    join_table = join(join_table, solar_md_table['EPHEM_DATE', 'RA_APP', 'DEC_APP', 'ELV_APP'])
-    target_ra_dec = ascoord.SkyCoord(ra=join_table['RA_APP'], dec=join_table['DEC_APP'], unit='deg', frame='icrs')
+    obs_md_table = join(obs_md_table, solar_md_table['EPHEM_DATE', 'RA_APP', 'DEC_APP', 'ELV_APP'])
+    print obs_md_table
+    cache = {}
+    obs_md_table.add_column(Column(separation_vectfunc(boresight_ra_dec,
+                                        ascoord.SkyCoord(ra=obs_md_table['RA_APP'], dec=obs_md_table['DEC_APP'], unit='deg', frame='icrs'),
+                                        cache),
+                                    dtype=float, name="SOLAR_SEP"))
+    obs_md_table.rename_column("ELV_APP", "SOLAR_ELV")
+    obs_md_table.remove_columns(['RA_APP', 'DEC_APP'])
 
-    separations = vectfunc(boresight_ra_dec, target_ra_dec)
+    print obs_md_table
 
-    join_table.add_column(Column(separations, name="SOLAR_SEP"))
-    join_table.rename_column("ELV_APP", "SOLAR_ELV")
-    join_table.remove_columns(['RA_APP', 'DEC_APP'])
+    #Add in galactic data
+    #Room to improve performance here; since same RA/DEC for many exposures, could
+    #cache galactic core, plane separations.
+    cache = {}
+    obs_md_table.add_column(Column(separation_vectfunc(boresight_ra_dec, galactic_core, cache),
+                                dtype=float, name="GALACTIC_CORE_SEP"))
+    cache = {}
+    obs_md_table.add_column(Column(plane_separation_vectfunc(boresight_ra_dec, cache),
+                                dtype=float, name="GALACTIC_PLANE_SEP"))
+    print obs_md_table
 
-
-    obs_md_table = join(obs_md_table, join_table)
     obs_md_table.write("annnotated_metadata.csv", format="ascii.csv")
 
 if __name__ == '__main__':
