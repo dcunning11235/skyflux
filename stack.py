@@ -34,6 +34,7 @@ manager = bdremote.Manager()
 
 #extra 0.001 on end to include end val 10422.76, not a mistake
 skyexp_wlen_out = np.arange(3500.26, 10422.761, 0.975)
+skyexp_loglam_out = np.arange(3.5441, 4.01805, 0.00006675)
 
 def camera_id(camera, fiber):
     return camera[0] + ("1" if (fiber <= 500) else "2")
@@ -58,14 +59,16 @@ def stack_exposures(fiber_group, exposure=None):
 
         for i, exp in enumerate(exposure_list):
             r_data = spec.get_valid_data(include_sky=True, exposure_index=exp,
-                            camera=camera_id('r', row['FIBER']), use_loglam=False, use_ivar=True)
+                            camera=camera_id('r', row['FIBER']), use_loglam=False, use_ivar=True,
+                            include_wdisp=False)
             b_data = spec.get_valid_data(include_sky=True, exposure_index=exp,
-                            camera=camera_id('b', row['FIBER']), use_loglam=False, use_ivar=True)
-            spec_sky_list[i] = resample_regular(b_data, r_data, spec_sky_list[i])
+                            camera=camera_id('b', row['FIBER']), use_loglam=False, use_ivar=True,
+                            include_wdisp=False)
+            spec_sky_list[i] = resample_regular(b_data, r_data, spec_sky_list[i], use_loglam=False)
 
     return exposure_list, spec_sky_list
 
-def resample_regular(b_data, r_data, accumulate_result):
+def resample_regular(b_data, r_data, accumulate_result, use_loglam=False):
     '''
     Fiber exposures are all on slightly different grids, with slightly different starting
     points; and these are not the co-add fiducial grid.  E.g. a 'red' spectra might have 3150
@@ -81,14 +84,17 @@ def resample_regular(b_data, r_data, accumulate_result):
     wavelength delta is about 0.975 A, ranging up to about 1.120 A.  Using this smaller value,
     a nice-ish round number of 7100 spans from 3500.26 to 10422.76.
     '''
-    passthrough = [name for name in b_data.dtype.names if name != 'wavelength']
-    b_resample_data = resample(b_data, 'wavelength', skyexp_wlen_out, passthrough)
-    r_resample_data = resample(r_data, 'wavelength', skyexp_wlen_out, passthrough)
+    passthrough = [name for name in b_data.dtype.names if name != ('wavelength' if not use_loglam else 'loglam')]
+    b_resample_data = resample(b_data.data, ('wavelength' if not use_loglam else 'loglam'),
+                                        (skyexp_wlen_out if not use_loglam else skyexp_loglam_out), passthrough)
+    r_resample_data = resample(r_data.data, ('wavelength' if not use_loglam else 'loglam'),
+                                        (skyexp_wlen_out if not use_loglam else skyexp_loglam_out), passthrough)
     accumulate_result = accumulate(accumulate_result, b_resample_data, data_out=accumulate_result,
-                    join='wavelength', add=('flux', 'sky'), weight='ivar')
+                    join=('wavelength' if not use_loglam else 'loglam'),
+                    add=('flux', 'sky'), weight='ivar')
     accumulate_result = accumulate(accumulate_result, r_resample_data, data_out=accumulate_result,
-                    join='wavelength', add=('flux', 'sky'), weight='ivar')
-
+                    join=('wavelength' if not use_loglam else 'loglam'),
+                    add=('flux', 'sky'), weight='ivar')
     return accumulate_result
 
 def save_stacks(stacks, fiber_group, exposure):
