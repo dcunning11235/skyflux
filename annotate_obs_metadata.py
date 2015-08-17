@@ -133,7 +133,7 @@ def main():
 
     #Join lunar data to the table
     obs_md_table = join(obs_md_table, lunar_md_table['EPHEM_DATE', 'RA_APP', 'DEC_APP', 'MG_APP', 'ELV_APP'])
-    print obs_md_table
+    #print obs_md_table
     cache = {}
     obs_md_table.add_column(Column(separation_vectfunc(boresight_ra_dec,
                                         ascoord.SkyCoord(ra=obs_md_table['RA_APP'], dec=obs_md_table['DEC_APP'], unit='deg', frame='icrs'),
@@ -147,7 +147,7 @@ def main():
 
     #Join solar data to the table
     obs_md_table = join(obs_md_table, solar_md_table['EPHEM_DATE', 'RA_APP', 'DEC_APP', 'ELV_APP'])
-    print obs_md_table
+    #print obs_md_table
     cache = {}
     obs_md_table.add_column(Column(separation_vectfunc(boresight_ra_dec,
                                         ascoord.SkyCoord(ra=obs_md_table['RA_APP'], dec=obs_md_table['DEC_APP'], unit='deg', frame='icrs'),
@@ -155,8 +155,7 @@ def main():
                                     dtype=float, name="SOLAR_SEP"))
     obs_md_table.rename_column("ELV_APP", "SOLAR_ELV")
     obs_md_table.remove_columns(['RA_APP', 'DEC_APP'])
-
-    print obs_md_table
+    #print obs_md_table
 
     #Add in galactic data
     #Room to improve performance here; since same RA/DEC for many exposures, could
@@ -167,7 +166,7 @@ def main():
     cache = {}
     obs_md_table.add_column(Column(plane_separation_vectfunc(boresight_ra_dec, cache),
                                 dtype=float, name="GALACTIC_PLANE_SEP"))
-    print obs_md_table
+    #print obs_md_table
 
     obs_md_table.write("annnotated_metadata.csv", format="ascii.csv")
 
