@@ -16,7 +16,7 @@ ephemeris_block_size_minutes = 15
 ephemeris_block_size = dt.timedelta(minutes=ephemeris_block_size_minutes)
 ephemeris_max_block_size = dt.timedelta(minutes=1.5*ephemeris_block_size_minutes)
 
-def find_ephemeris_lookup_date(tai_beg, tai_end):
+def find_ephemeris_lookup_date(tai_beg, tai_end, rows):
     '''
     Want to find the 15-minute increment (0, 15, 30, 45) that is sandwiched between the two
     passed datetimes.  However, spans can be less than 15 minutes, so also need handle this
@@ -30,11 +30,15 @@ def find_ephemeris_lookup_date(tai_beg, tai_end):
 
     vectfunc = np.vectorize(get_ephemeris_block_in_interval)
     mask = (tai_end_dt - tai_beg_dt) < ephemeris_max_block_size
+    print (tai_end_dt - tai_beg_dt)[~mask]
+    print rows[~mask]
     ret = np.zeros((len(tai_end_dt),), dtype=dt.datetime)
     ret[mask] = vectfunc(tai_beg_dt[mask], tai_end_dt[mask])
 
-    def _lookup_str_format(dt):
-        return dt.strftime("%Y-%b-%d %H:%M")
+    def _lookup_str_format(dtval):
+        if isinstance(dtval, dt.datetime):
+            return dtval.strftime("%Y-%b-%d %H:%M")
+        return ""
 
     vectfunc = np.vectorize(_lookup_str_format)
     ret = vectfunc(ret)
@@ -100,7 +104,7 @@ def main():
     solar_md_table = Table.read(sys.argv[3], format="ascii")
     solar_md_table.rename_column('UTC', 'EPHEM_DATE')
 
-    lookup_date = find_ephemeris_lookup_date(obs_md_table['TAI-BEG'], obs_md_table['TAI-END'])
+    lookup_date = find_ephemeris_lookup_date(obs_md_table['TAI-BEG'], obs_md_table['TAI-END'], obs_md_table)
     ephem_date_col = Column(lookup_date, name="EPHEM_DATE")
     obs_md_table.add_column(ephem_date_col)
 
