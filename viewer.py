@@ -66,7 +66,7 @@ for file in os.listdir(path):
                 key = 'loglam'
         else:
             weight = 'ivar' if 'ivar' in data2.colnames else None
-            add_names = [name for name in data2.colnames if name != result]
+            add_names = [name for name in data2.colnames if name not in [weight, key]]
             result = accumulate(np.array(data), np.array(data2), result, join=key, add=add_names, weight=weight)
 
 if result is None:

@@ -164,11 +164,11 @@ def get_total_flux(label, wlen, flux, con_flux, target_wlens=None, wlen_spans=No
                 print(wlen_filled[mask_arr])
                 raise
 
-    #TBD!!!
     if wlen_spans is not None:
         for i, span in enumerate(wlen_spans):
             start_offset = stack.get_stacked_fiducial_wlen_pixel_offset(span[0])
             end_offset = stack.get_stacked_fiducial_wlen_pixel_offset(span[1])
+
             total = intg.simps(flux[start_offset:end_offset+1], wlen[start_offset:end_offset+1])
             con_total = intg.simps(con_flux[start_offset:end_offset+1], wlen[start_offset:end_offset+1])
             ret[ind] = ("span", label, 0, wlen[start_offset], wlen[end_offset], total, con_total)
