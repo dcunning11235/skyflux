@@ -42,6 +42,10 @@ wlen_spans = {
     "red_half": [(6400,10350)]
 }
 
+total_dtype=[('total_type', object), ('source', object), ('wavelength_target', float), ('wavelength_lower_bound', float),
+            ('wavelength_upper_bound', float), ('wavelength_peak', float), ('peak_delta', float),
+            ('peak_delta_over_width', float), ('total_flux', float), ('total_con_flux', float)]
+
 def main():
     path = "."
     pattern = ""
@@ -58,8 +62,6 @@ def main():
             data['wavelength'].mask = False
             idstr = file[:file.rfind('.')]
 
-            total_dtype=[('total_type', object), ('source', object), ('wavelength_target', float), ('wavelength_lower_bound', float),
-                        ('wavelength_upper_bound', float), ('total_flux', float), ('total_con_flux', float)]
             peak_flux_list = []
             for key, vals in line_markers.items():
                 target_flux_totals = get_total_flux(key, data['wavelength'], data['flux'], data['con_flux'], vals)
@@ -76,9 +78,6 @@ def save_data(peak_flux_list, idstr):
 
 def get_total_flux(label, wlen, flux, con_flux, target_wlens=None, wlen_spans=None):
     old = np.seterr(all='raise')
-
-    total_dtype=[('total_type', object), ('label', object), ('wavelength_target', float), ('wavelength_lower_bound', float),
-                ('wavelength_upper_bound', float), ('total_flux', float), ('total_con_flux', float)]
 
     ret_len = 0
     if target_wlens is not None:
@@ -108,7 +107,7 @@ def get_total_flux(label, wlen, flux, con_flux, target_wlens=None, wlen_spans=No
 
             if under_offset < 1 or over_offset > len(wlen)-2:
                 #print "ran off end of spectrum with (under_offset, over_offset) = ", (under_offset, over_offset)
-                ret[ind] = ('line', label, 0, 0, 0, 0, 0)
+                ret[ind] = ('line', label, 0, 0, 0, 0, 0, 0, 0, 0)
                 ind += 1
                 continue
 
@@ -150,9 +149,15 @@ def get_total_flux(label, wlen, flux, con_flux, target_wlens=None, wlen_spans=No
                 end_ind = over_offset+1 - nonmasked_end
                 if end_ind == 0:
                     end_ind=None
+
                 total = intg.simps(flux_filled[start_ind:end_ind], wlen_filled[start_ind:end_ind])
                 con_total = intg.simps(con_flux_filled[start_ind:end_ind], wlen_filled[start_ind:end_ind])
-                ret[ind] = ("line", label, target, wlen[under_offset], wlen[over_offset], total, con_total)
+                range_start = wlen[under_offset]
+                range_end = wlen[over_offset]
+                range_peak = wlen_filled[flux_filled.argsort()[-1]]
+                peak_delta = (range_peak - target)
+                ret[ind] = ("line", label, target, range_start, range_end, range_peak, peak_delta,
+                            peak_delta/(range_end - range_start), total, con_total)
                 ind += 1
             except:
                 print(int_filled)
@@ -171,7 +176,7 @@ def get_total_flux(label, wlen, flux, con_flux, target_wlens=None, wlen_spans=No
 
             total = intg.simps(flux[start_offset:end_offset+1], wlen[start_offset:end_offset+1])
             con_total = intg.simps(con_flux[start_offset:end_offset+1], wlen[start_offset:end_offset+1])
-            ret[ind] = ("span", label, 0, wlen[start_offset], wlen[end_offset], total, con_total)
+            ret[ind] = ("span", label, 0, wlen[start_offset], wlen[end_offset], 0, 0, 0, total, con_total)
             ind += 1
 
     return ret

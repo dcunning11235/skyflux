@@ -7,7 +7,7 @@ import sys
 
 block_sizes = [12,20]
 noisy_cutoff = 5
-noisy_size = 60
+noisy_sizes = [30, 40]
 base_std = 0.5
 
 def main():
@@ -26,7 +26,7 @@ def main():
             idstr = file[:file.rfind('.')]
 
             continuum, wo_continuum = smoothing(data['wavelength'],
-                data['flux']+data['sky'], data.mask, idstr=idstr, keep_chunky=True, block_sizes=block_sizes)
+                data['flux'], data.mask, idstr=idstr, keep_chunky=True, block_sizes=block_sizes)
             save_data(data['wavelength'], wo_continuum, continuum, data['ivar'], idstr)
 
 def save_data(wlen, flux, con_flux, ivar, idstr):
@@ -35,8 +35,10 @@ def save_data(wlen, flux, con_flux, ivar, idstr):
     continuum_table.write("{}-continuum.csv".format(idstr), format="ascii.csv")
 
 def smoothing(work_wlen, work_data, orig_mask, block_sizes, idstr=None, keep_chunky=False):
-    work_data_cp = kill_peaks(work_data, noisy_size, is_noisy=True)
+    work_data_cp = np.ma.mean( [kill_peaks(work_data, block, is_noisy=True) for block in noisy_sizes], axis=0 )
     work_data_cp = np.ma.mean( [kill_peaks(work_data_cp, block) for block in block_sizes], axis=0 )
+
+    #work_data_cp = np.ma.mean( [kill_peaks(work_data, block) for block in block_sizes], axis=0 )
 
     if not keep_chunky:
         g = Gaussian1DKernel(stddev=10)
