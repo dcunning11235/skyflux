@@ -16,18 +16,38 @@ import stack
 
 import numpy.lib.recfunctions as rfn
 
+# I need to separate these into "good" line markers (aka, ones I can pull out of the continuum
+# files with some minimum separation between peak and known line wavelengths) and "bad"
+# line_markers
+#
+# I also need to build something that finds peaks automatically...
+#
+# Also, need (???) to handle cases where peaks are spread beyond 10 buckets; this actually
+# happens in a few cases (e.g. ~4982, a Na line/peak)
+#
+# Also also, need to deal with continum jumps OR, actually fix the continuum calc (the latter
+# being the better option, but maybe more complicated)
+
 line_markers = {
-    "Li": [3671.7, 3720.9, 3746.58, 3796.1, 3915.3, 3985.5, 4132.6, 4273.1, 4602.8, 4917.7, 6103.5],
+    "Ar": [5087.1, 8849.9], #Mayyyybe?  Or Krypton?  Or something...
+    "Li": [3720.9, 3746.58, 3796.1, 3915.3, 3985.5, 4273.1, 4602.8, 4917.7, 6103.5],
     "Li-II": [5199.3], #avg of many close lines
     "Hg": [3550.2, 3654.8, 4046.6, 4358.3, 5460.8, 5675.9, 5769.6, 5790.7, 5803.7, 6716.3, 6907.5, 7602.2],
     "Na": [3881.8, 4982.8, 5889.9, 5895.9],
-    "O": [6156.0, 6156.8, 6158.2, 6456, 7002.2, 7254.2, 7254.5],
-    "N": [5199.8, 5200.3, 5752.5, 7306.6, 7423.6, 7442.3, 7468.3],
+    "O": [6156.0, 6156.8, 6158.2, 6300.3, 6456, 7002.2, 7254.2, 7254.5],
+    "N": [5199.8, 5200.3, 5752.5, 7306.6, 7423.6, 7442.3, 7468.3, 9386.8],
     "N-II": [5199.5],
-    "Na-II": [3533.1, 3631.2, 3711.1, 3858.3],
-    "Hg-II": [3532.6, 3605.8, 3989.3, 5128.4, 5204.8, 5425.3, 5595.3, 5677.1, 5871.3, 5888.9, 6146.4, 6149.5, 6521.1, 7346.6],
-    "O-II": [7599.2]
+    "Na-II": [3533.1, 3711.1, 3858.3],
+    "Hg-II": [3532.6, 3605.8, 5128.4, 5204.8, 5425.3, 5595.3, 5677.1, 5871.3, 5888.9, 6146.4, 6149.5, 6521.1, 7346.6],
+    "O-II": [7599.2],
+    "C-III": [8367.9]
 }
+bad_line_markers = {
+    "Li": [3671.7, 4132.6],
+    "Na-II": [3631.2],
+    "Hg-II": [3989.3]
+}
+
 solar_absorb_line_markers = {
     "Ca-II": [3968, 3934],
     "H": [4861, 6563],

@@ -10,6 +10,30 @@ noisy_cutoff = 5
 noisy_sizes = [30, 40]
 base_std = 0.5
 
+# There are several issues with this implementation/algorithm
+#
+# 1.)  There is a trade off between finding the base/continua of very nosiy, "peaky" regions
+#           and over-flatenning absorption features.  This mainly has to do with the size
+#           of the 'noisy_sizes' setting; wider flattens more, eliminatting peaks but
+#           erasing absorption featurs.  Possible solution:  Add 'noisy_cutoff' list and
+#           further tune STD cutoffs.   <----- FIX THIS
+# 2.)  The above is a problem; I believe the peak at 7468.2 (N) is being affected by this in
+#           the 3586 exposures; I think this may be because of the above, and/or...
+# 3.)  In cases where the STD window is masked there are two issues:
+#               a.)  Not taking enough values into consideration; this is mostly a 'pure'
+#                   statistical issue.   <----- FIX THIS
+#               b.)  The lowest point calculation can be skewed (severly) if e.g. the only
+#                   non-masked value are part of a peak.  Need to implement some logic to
+#                   extend the region to include non-masked values, or just reject the region
+#                   and interp. between neigboring regions... <-------- FIX THIS
+# 4.)  There is a slight bias between regions:  in noisy regions the lowest point is sought,
+#           in non-noisy regions over the (small) 'base_std' the lowest point is sought,
+#           and in very quiet regions the average is sought.  So over the e.g. 4500-5500 (very
+#           roughly, from memory) region the baseline is 'shifted up' by something like half a
+#           flux unit.  This is small, but potentially important in comparing small features.
+#           Could relatively easily emperically test for the actual difference, if it comes to
+#           that.
+
 def main():
     path = "."
     pattern = ""

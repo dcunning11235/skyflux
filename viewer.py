@@ -10,7 +10,7 @@ import os.path
 import bossdata.spec as bdspec
 from numpy.lib import recfunctions as rfn
 
-def plot_it(data, key):
+def plot_it(data, key, peaks_table=None):
     data = Table(data, masked=True)
     if 'ivar' in data.colnames:
         data.mask = [(data['flux'] == 0) | (np.abs(data['ivar']) <= 0.0001)]*len(data.columns)
@@ -27,13 +27,22 @@ def plot_it(data, key):
 
 
     if 'con_flux' in data.colnames:
+        val += data['con_flux']
+
         plt.plot(data[key], [0]*len(data[key]), color='red')
         plt.plot(data[key], data['con_flux'], color='green')
-        plt.plot(data[key], val + data['con_flux'], color='orange', alpha=0.7)
+        plt.plot(data[key], val, color='orange', alpha=0.7)
     else:
         plt.plot(data[key], val)
     if np.any(sigma > 0) and 'con_flux' not in data.colnames:
         plt.fill_between(data[key], val-sigma, val+sigma, color='red')
+
+    if peaks_table is not None:
+        for row in peaks_table:
+            if row['total_type'] == 'line' and row['wavelength_lower_bound'] != 0:
+                plt.fill_between([row['wavelength_lower_bound'], row['wavelength_upper_bound']],
+                                [0, np.max(val)], color='gray')
+
     plt.tight_layout()
     #plt.ylim((np.percentile(val-sigma,0.1),np.percentile(val+sigma,99.9)))
     plt.show()
@@ -43,9 +52,14 @@ data = None
 result = None
 path = "."
 pattern = ""
+peaks = None
 key = "wavelength"
 
-if len(sys.argv) == 3:
+if len(sys.argv) == 4:
+    path = sys.argv[1]
+    pattern = sys.argv[2]
+    peaks = sys.argv[3]
+elif len(sys.argv) == 3:
     path = sys.argv[1]
     pattern = sys.argv[2]
 else:
@@ -71,7 +85,12 @@ for file in os.listdir(path):
 
 if result is None:
     result = data
-plot_it(result, key)
+
+peaks_table = None
+if peaks is not None:
+    peaks_table = Table.read(os.path.join(path, peaks), format="ascii")
+
+plot_it(result, key, peaks_table)
 
 '''
 if 'loglam' not in result.dtype.names:
