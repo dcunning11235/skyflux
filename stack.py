@@ -50,17 +50,18 @@ def get_stacked_fiducial_wlen_pixel_offset(target):
 def camera_id(camera, fiber):
     return camera[0] + ("1" if (fiber <= 500) else "2")
 
-def stack_exposures(fiber_group, exposure=None):
+def stack_exposures(fiber_group, exposure=None, use_cframe=False):
     exposure_list = []
     spec_sky_list = None
 
-    filename = finder.get_plate_plan_path(plate=fiber_group['PLATE'][0], mjd=fiber_group['MJD'][0])
-    plan = bdplate.Plan(manager.get(filename))
+    filename = finder.get_spec_path(plate=fiber_group['PLATE'][0],
+                mjd=fiber_group['MJD'][0], fiber=1,
+                lite=False)
+    spec = bdspec.SpecFile(manager.get(filename))
 
     if len(exposure_list) == 0:
         if exposure is None:
-            # exposure_list.extend(range(plan.num_exposures/2))
-            exposure_list.extend(range(plan.num_science_exposures))
+            exposure_list = spec.exposures.table['science'][0:(spec.num_exposures/2)]
         elif hasattr(exposure, '__iter__'):
             exposure_list.extend(exposure)
         else:
@@ -68,59 +69,50 @@ def stack_exposures(fiber_group, exposure=None):
     if spec_sky_list is None:
         spec_sky_list = [None]*len(exposure_list)
 
-    fiber_list_1 = fiber_group['FIBER'][fiber_group['FIBER'] <= 500]
-    fiber_list_2 = fiber_group['FIBER'][fiber_group['FIBER'] > 500]
+    # These are really two separate methods.... should just separate
+    if use_cframe:
+        fiber_list_1 = fiber_group['FIBER'][fiber_group['FIBER'] <= 500]
+        fiber_list_2 = fiber_group['FIBER'][fiber_group['FIBER'] > 500]
 
-    def _prepend_frame_path(plate, frame_file):
-        return posixpath.join(finder.redux_base, '{:04d}'.format(plate), frame_file)
+        def _prepend_frame_path(plate, frame_file):
+            return posixpath.join(finder.redux_base, '{:04d}'.format(plate), frame_file)
 
-    def _get_frame_data(fiber_list, camera, exp):
-        use_calibrated = True
+        def _get_frame_data(fiber_list, camera, exp):
+            use_calibrated = True
 
-        exposure = plan.get_exposure_name(exp, camera, fiber_list[0], calibrated=use_calibrated)
-        frame = bdplate.FrameFile(manager.get(_prepend_frame_path(fiber_group['PLATE'][0], exposure)),
-                                    1 if fiber_list[0] <= 500 else 2, use_calibrated)
-        data = frame.get_valid_data(fiber_list, include_sky=True, use_ivar=True)
-        data['flux'] += data['sky']
-        return data
-
-    for i, exp in enumerate(exposure_list):
-        r_1_data = _get_frame_data(fiber_list_1, 'red', exp)
-        b_1_data = _get_frame_data(fiber_list_1, 'blue', exp)
-        spec_sky_list[i] = resample_regular(b_1_data, r_1_data, spec_sky_list[i], use_loglam=False)
-
-        r_2_data = _get_frame_data(fiber_list_2, 'red', exp)
-        b_2_data = _get_frame_data(fiber_list_2, 'blue', exp)
-        spec_sky_list[i] = resample_regular(b_2_data, r_2_data, spec_sky_list[i], use_loglam=False)
-
-    '''
-    for row in fiber_group:
-        filename = finder.get_spec_path(plate=row['PLATE'], mjd=row['MJD'], fiber=row['FIBER'], lite=False)
-        spec = bdspec.SpecFile(manager.get(filename))
-
-        if len(exposure_list) == 0:
-            if exposure is None:
-                exposure_list.extend(range(plan.num_exposures/2))
-            elif hasattr(exposure, '__iter__'):
-                exposure_list.extend(exposure)
-            else:
-                exposure_list.append(exposure)
-        if spec_sky_list is None:
-            spec_sky_list = [None]*len(exposure_list)
+            #exposure = plan.get_exposure_name(exp, camera, fiber_list[0], calibrated=use_calibrated)
+            exposure = '{0}-{1}-{2:08d}.{3}'.format('spCFrame', camera, exp, 'fits')
+            frame = bdplate.FrameFile(manager.get(_prepend_frame_path(fiber_group['PLATE'][0], exposure)),
+                                        1 if fiber_list[0] <= 500 else 2, use_calibrated)
+            data = frame.get_valid_data(fiber_list, include_sky=True, use_ivar=True)
+            data['flux'] += data['sky']
+            return data
 
         for i, exp in enumerate(exposure_list):
-            r_data = spec.get_valid_data(include_sky=True, exposure_index=exp,
-                            camera=camera_id('r', row['FIBER']), use_loglam=False, use_ivar=True,
-                            include_wdisp=False)
-            b_data = spec.get_valid_data(include_sky=True, exposure_index=exp,
-                            camera=camera_id('b', row['FIBER']), use_loglam=False, use_ivar=True,
-                            include_wdisp=False)
-            spec_sky_list[i] = resample_regular(b_data, r_data, spec_sky_list[i], use_loglam=False)
-    '''
+            r_1_data = _get_frame_data(fiber_list_1, 'r1', exp)
+            b_1_data = _get_frame_data(fiber_list_1, 'b1', exp)
+            spec_sky_list[i] = resample_regular(b_1_data, r_1_data, spec_sky_list[i], use_loglam=False)
+
+            r_2_data = _get_frame_data(fiber_list_2, 'r2', exp)
+            b_2_data = _get_frame_data(fiber_list_2, 'b2', exp)
+            spec_sky_list[i] = resample_regular(b_2_data, r_2_data, spec_sky_list[i], use_loglam=False)
+    else:
+        for row in fiber_group:
+            filename = finder.get_spec_path(plate=row['PLATE'], mjd=row['MJD'], fiber=row['FIBER'], lite=False)
+            spec = bdspec.SpecFile(manager.get(filename))
+            for exp in exposure_list:
+                r_data = spec.get_valid_data(include_sky=True, exposure_index=exp,
+                                camera=camera_id('r', row['FIBER']), use_loglam=False, use_ivar=True,
+                                include_wdisp=False)
+                b_data = spec.get_valid_data(include_sky=True, exposure_index=exp,
+                                camera=camera_id('b', row['FIBER']), use_loglam=False, use_ivar=True,
+                                include_wdisp=False)
+                spec_sky_list[exp] = resample_regular(b_data, r_data, spec_sky_list[exp],
+                                        use_loglam=False, use_skyexp_fid=False)
 
     return exposure_list, spec_sky_list
 
-def resample_regular(b_data, r_data, accumulate_result, use_loglam=False):
+def resample_regular(b_data, r_data, accumulate_result, use_loglam=False, use_skyexp_fid=True):
     '''
     Fiber exposures are all on slightly different grids, with slightly different starting
     points; and these are not the co-add fiducial grid.  E.g. a 'red' spectra might have 3150
@@ -138,16 +130,22 @@ def resample_regular(b_data, r_data, accumulate_result, use_loglam=False):
     '''
 
     def _r_and_a(row, passthrough, accumulate_result):
-        resample_data = resample(row, ('wavelength' if not use_loglam else 'loglam'),
-                                        (skyexp_wlen_out if not use_loglam else skyexp_loglam_out), passthrough)
+        grid = (skyexp_wlen_out if not use_loglam else skyexp_loglam_out) \
+                    if use_skyexp_fid else (10**bdspec.fiducial_loglam if not use_loglam \
+                    else bdspec.fiducial_loglam)
+        resample_data = resample(row, ('wavelength' if not use_loglam else 'loglam'), grid, passthrough)
         return accumulate(accumulate_result, resample_data, data_out=accumulate_result,
                     join=('wavelength' if not use_loglam else 'loglam'),
                     add=('flux'), weight='ivar')
 
     passthrough = [name for name in b_data.dtype.names if name != ('wavelength' if not use_loglam else 'loglam')]
-    for b_row, r_row in zip(b_data, r_data):
-        accumulate_result = _r_and_a(b_row, passthrough, accumulate_result)
-        accumulate_result = _r_and_a(r_row, passthrough, accumulate_result)
+    if b_data.ndim > 1:
+        for b_row, r_row in zip(b_data, r_data):
+            accumulate_result = _r_and_a(b_row, passthrough, accumulate_result)
+            accumulate_result = _r_and_a(r_row, passthrough, accumulate_result)
+    else:
+        accumulate_result = _r_and_a(b_data, passthrough, accumulate_result)
+        accumulate_result = _r_and_a(r_data, passthrough, accumulate_result)
     return accumulate_result
 
 def save_stacks(stacks, fiber_group, exposure, save_clean=True):
@@ -155,17 +153,6 @@ def save_stacks(stacks, fiber_group, exposure, save_clean=True):
     mjd = fiber_group[0]['MJD']
     for stackedexp, exp in zip(stacks, exposure):
         exp_table = Table(data=stackedexp)
-        '''
-        #exp_table['ivar'][np.abs(exp_table['ivar']) > 1000000] = np.iinfo(int).max
-        mask |= (np.abs(exp_table['ivar']) < 0.000001)
-
-        if save_clean:
-            exp_table['flux'][mask] = 0
-            exp_table['sky'][mask] = 0
-            exp_table['ivar'][mask] = 0
-        else:
-            exp_table.add_column(Column(mask, name='mask'))
-        '''
         exp_table.write("stacked_sky_{}-{}-exp{:02d}.csv".format(plate, mjd, exp), format="ascii.csv")
 
 def main():
@@ -178,7 +165,7 @@ def main():
         counter = 0
 
         for group in sky_fibers_table.groups:
-            exposures, stacks = stack_exposures(group)
+            exposures, stacks = stack_exposures(group, use_cframe=True)
             save_stacks(stacks, group, exposures)
             counter += len(group)
             progress_bar.update(counter)
