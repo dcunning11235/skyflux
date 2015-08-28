@@ -34,7 +34,6 @@ def file_deets(plate, mjd, gather=False):
     exposure_data = np.empty((spec.num_exposures/2, ),
                         dtype=[('PLATE', int), ('MJD', int), ('EXP_ID', "|S6"), ('RA', float), ('DEC', float),
                             ('AZ', float), ('ALT', float), ('AIRMASS', float), ('TAI-BEG', dt.datetime), ('TAI-END', dt.datetime)])
-    print spec.exposures.sequence
     for i, exp in enumerate(spec.exposures.sequence):
         exp_header = spec.get_exposure_hdu(i, 'r1').read_header()
         exposure_data[i] = (int(plate), int(mjd), exp,
