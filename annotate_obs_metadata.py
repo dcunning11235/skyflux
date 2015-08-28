@@ -97,10 +97,10 @@ def round_tai(tai):
     return tai + tdelta
 
 def main():
-    obs_md_table = Table.read(sys.argv[1], format="ascii")
-    lunar_md_table = Table.read(sys.argv[2], format="ascii")
+    obs_md_table = Table.read(sys.argv[1], format="ascii.csv")
+    lunar_md_table = Table.read(sys.argv[2], format="ascii.csv")
     lunar_md_table.rename_column('UTC', 'EPHEM_DATE')
-    solar_md_table = Table.read(sys.argv[3], format="ascii")
+    solar_md_table = Table.read(sys.argv[3], format="ascii.csv")
     solar_md_table.rename_column('UTC', 'EPHEM_DATE')
 
     print "Table has {} entries".format(len(obs_md_table))
@@ -173,7 +173,7 @@ def main():
                                 dtype=float, name="GALACTIC_PLANE_SEP"))
     #print obs_md_table
 
-    obs_md_table.write("annnotated_metadata.csv", format="ascii.csv")
+    obs_md_table.write("annotated_metadata.csv", format="ascii.csv")
 
 if __name__ == '__main__':
     main()

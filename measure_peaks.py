@@ -30,25 +30,33 @@ import numpy.lib.recfunctions as rfn
 
 line_markers = {
     "Ar": [5087.1, 8849.9], #Mayyyybe?  Or Krypton?  Or something...
-    "Li": [3720.9, 3746.58, 3796.1, 3915.3, 3985.5, 4273.1],
+    "Li": [3746.58, 3796.1, 3915.3, 4273.1],
     "Li-II": [5199.3], #avg of many close lines
-    "Hg": [3550.2, 3654.8, 4046.6, 4358.3, 5460.8, 5675.9, 5769.6, 5790.7, 6907.5, 7602.2],
+    "Hg": [3650.2, 3654.8, 3663.3, 4046.6, 4358.3, 5460.8, 5675.9, 5769.6, 5790.7, 7602.2],
     "Na": [3881.8, 4982.8, 5889.9, 5895.9],
-    "O": [6156.0, 6156.8, 6158.2, 6300.3, 7002.2, 7254.2, 7254.5],
-    "N": [5199.8, 5200.3, 7306.6, 7442.3, 7468.3, 9386.8],
+    "O": [6156.0, 6300.3, 7002.2, 7254.2, 7254.5],
+    "N": [5199.8, 5200.3, 7306.6, 7468.3, 9386.8],
     "N-II": [5199.5],
-    "Na-II": [3533.1, 3711.1, 3858.3],
-    "Hg-II": [3532.6, 3605.8, 5204.8, 5595.3, 5677.1, 5871.3, 5888.9, 6146.4, 6149.5, 6521.1, 7346.6],
+    "Hg-II": [5871.3, 5888.9, 6146.4, 6521.1],
     "O-II": [7599.2],
-    "C-III": [8367.9]
+    "O-III": [3715.1],
+    "Kr-II": [5690.4] #Or... Na-VII @ 5690
 }
+
+questionable_to_bad_line_markers = {
+    "C-III": [8367.9],
+    "N": [7442.3],
+    "Hg": [6907.5],
+    "Hg-II": [5204.8, 7346.6]
+}
+
 bad_line_markers = {
-    "O": [6456],
+    "O": [6156.8, 6158.2, 6456],
     "N": [5752.5, 7423.6],
-    "Hg": [5803.7, 6716.3],
-    "Li": [3671.7, 4132.6, 4602.8, 4917.7, 6103.5],
-    "Na-II": [3631.2],
-    "Hg-II": [3989.3, 5128.4, 5425.3]
+    "Hg": [3550.2, 5803.7, 6716.3],
+    "Li": [3671.7, 3720.9, 3985.5, 4132.6, 4602.8, 4917.7, 6103.5],
+    "Na-II": [3533.1, 3631.2, 3711.1, 3858.3],
+    "Hg-II": [3532.6, 3605.8, 3989.3, 5128.4, 5425.3, 5595.3, 5677.1, 6149.5]
 }
 
 solar_absorb_line_markers = {
@@ -65,9 +73,14 @@ wlen_spans = {
     "red_half": [(6400,10350)]
 }
 
-total_dtype=[('total_type', object), ('source', object), ('wavelength_target', float), ('wavelength_lower_bound', float),
-            ('wavelength_upper_bound', float), ('wavelength_peak', float), ('peak_delta', float),
+total_dtype=[('total_type', object), ('source', object), ('wavelength_target', float),
+            ('wavelength_lower_bound', float), ('index_lower_bound', int),
+            ('wavelength_upper_bound', float), ('index_upper_bound', int),
+            ('wavelength_peak', float), ('peak_delta', float),
             ('peak_delta_over_width', float), ('total_flux', float), ('total_con_flux', float)]
+
+max_peak_width = 15
+seek_peaks = False
 
 def main():
     path = "."
@@ -89,9 +102,30 @@ def main():
             for key, vals in line_markers.items():
                 target_flux_totals = get_total_flux(key, data['wavelength'], data['flux'], data['con_flux'], vals)
                 peak_flux_list.append(target_flux_totals)
+
+            #Now have the peaks (or not) for known lines; find "unknown" peaks
+            if seek_peaks:
+                for peaks in peak_flux_list:
+                    data = mask_known_peaks(data, peaks)
+                line = get_next_unknown_peak(data)
+                while line > 0:
+                    target_flux_totals = get_total_flux("UNKNOWN", data['wavelength'], data['flux'], data['con_flux'], line)
+                    print target_flux_totals
+                    if target_flux_totals['index_upper_bound'] != 0:
+                        peak_flux_list.append(target_flux_totals)
+                        data = mask_known_peaks(data, target_flux_totals)
+                    else:
+                        get_next_unknown_peak(data, repeat_kill=True)
+
+                    line = get_next_unknown_peak(data)
+
+            #Let's just forget this for now
+            '''
             for key, vals in wlen_spans.items():
                 target_flux_totals = get_total_flux(key, data['wavelength'], data['flux'], data['con_flux'], target_wlens=None, wlen_spans=vals)
                 peak_flux_list.append(target_flux_totals)
+            '''
+
             save_data(peak_flux_list, idstr)
 
 def save_data(peak_flux_list, idstr):
@@ -99,11 +133,43 @@ def save_data(peak_flux_list, idstr):
     peak_flux = Table(data=arr)
     peak_flux.write('{}-peaks.csv'.format(idstr), format='ascii.csv')
 
+def mask_range(data, start_ind, end_ind):
+    cols = [name for name in data.colnames if name != 'wavelength']
+    for col in cols:
+        data[col].mask[start_ind:end_ind+1] = True
+
+def mask_known_peaks(data, peaks):
+    for peak in peaks:
+        if peak['index_upper_bound'] != 0:
+            mask_range(data, peak['index_lower_bound'], peak['index_upper_bound'])
+    return data
+
+def get_next_unknown_peak(data, repeat_kill=False):
+    peak_ind = np.ma.argmax(data['flux'])
+    lower_ind = peak_ind - (max_peak_width // 2)
+    if lower_ind < 0:
+        lower_ind = 0
+    upper_ind = lower_ind + max_peak_width
+    if upper_ind >= len(data):
+        upper_ind = len(data) - 1
+
+    if repeat_kill:
+        mask_range(data, lower_ind, upper_ind)
+        return -1
+
+    stddev = np.ma.std(data['flux'][lower_ind:upper_ind])
+    print stddev
+    if stddev < 0.01 and stddev > 0:
+        return 0
+    return data['wavelength'][peak_ind]
+
 def get_total_flux(label, wlen, flux, con_flux, target_wlens=None, wlen_spans=None):
-    old = np.seterr(all='raise')
+    #old = np.seterr(all='raise')
 
     ret_len = 0
     if target_wlens is not None:
+        if not hasattr(target_wlens, "__iter__"):
+            target_wlens = [target_wlens]
         ret_len += len(target_wlens)
     if wlen_spans is not None:
         ret_len += len(wlen_spans)
@@ -130,11 +196,12 @@ def get_total_flux(label, wlen, flux, con_flux, target_wlens=None, wlen_spans=No
 
             if under_offset < 1 or over_offset > len(wlen)-2:
                 #print "ran off end of spectrum with (under_offset, over_offset) = ", (under_offset, over_offset)
-                ret[ind] = ('line', label, 0, 0, 0, 0, 0, 0, 0, 0)
+                ret[ind] = ('line', label, target, 0, 0, 0, 0, 0, 0, 0, 0, 0)
                 ind += 1
                 continue
 
             #Now, try to account for cases where peaks are jagged and we're stuck on a small dip
+            '''
             if (np.ma.min( flux[max(0, under_offset-4):under_offset] - con_flux[max(0, under_offset-4):under_offset]) <
                     (flux[under_offset] - con_flux[under_offset]) / 2) and \
                 (np.ma.max( flux[max(0, under_offset-4):under_offset+1] - con_flux[max(0, under_offset-4):under_offset+1]) <
@@ -149,6 +216,19 @@ def get_total_flux(label, wlen, flux, con_flux, target_wlens=None, wlen_spans=No
                     np.ma.max(flux[under_offset:over_offset+1] - con_flux[under_offset:over_offset+1]) / 5):
                 #Start block
                 over_over_offset = np.ma.argmin( flux[over_offset+1:min(over_offset+5, len(wlen))] - con_flux[over_offset+1:min(over_offset+5, len(wlen))])
+                new_over_offset = over_offset + over_over_offset
+                over_offset = new_over_offset
+            '''
+            if (np.ma.min( flux[max(0, under_offset-4):under_offset]) < (flux[under_offset] / 2)) and \
+                    (np.ma.max( flux[max(0, under_offset-4):under_offset+1]) < np.ma.max(flux[under_offset:over_offset+1]) / 5):
+                #Start block
+                under_under_offset = np.ma.argmin( flux[max(0, under_offset-4):under_offset+1])
+                new_under_offset = under_offset - (4-under_under_offset)
+                under_offset = new_under_offset
+            if (np.ma.min( flux[over_offset+1:min(over_offset+5, len(wlen))]) < (flux[over_offset] / 2)) and \
+                    (np.ma.max( flux[over_offset+1:min(over_offset+5, len(wlen))]) < np.ma.max(flux[under_offset:over_offset+1]) / 5):
+                #Start block
+                over_over_offset = np.ma.argmin( flux[over_offset+1:min(over_offset+5, len(wlen))])
                 new_over_offset = over_offset + over_over_offset
                 over_offset = new_over_offset
 
@@ -179,7 +259,8 @@ def get_total_flux(label, wlen, flux, con_flux, target_wlens=None, wlen_spans=No
                 range_end = wlen[over_offset]
                 range_peak = wlen_filled[flux_filled.argsort()[-1]]
                 peak_delta = (range_peak - target)
-                ret[ind] = ("line", label, target, range_start, range_end, range_peak, peak_delta,
+                ret[ind] = ("line", label, target, range_start, under_offset, range_end,
+                            over_offset, range_peak, peak_delta,
                             peak_delta/(range_end - range_start), total, con_total)
                 ind += 1
             except:
@@ -199,7 +280,7 @@ def get_total_flux(label, wlen, flux, con_flux, target_wlens=None, wlen_spans=No
 
             total = intg.simps(flux[start_offset:end_offset+1], wlen[start_offset:end_offset+1])
             con_total = intg.simps(con_flux[start_offset:end_offset+1], wlen[start_offset:end_offset+1])
-            ret[ind] = ("span", label, 0, wlen[start_offset], wlen[end_offset], 0, 0, 0, total, con_total)
+            ret[ind] = ("span", label, 0, wlen[start_offset], start_offset, wlen[end_offset], end_offset, 0, 0, 0, total, con_total)
             ind += 1
 
     return ret

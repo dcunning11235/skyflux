@@ -24,28 +24,22 @@ tai_base_date_time = dt.datetime(1858, 11, 17)
 finder = bdpath.Finder()
 manager = bdremote.Manager()
 
-def file_deets(plate, mjd, spectrograph, gather=False):
-    fiber = 0
-    if spectrograph == 1:
-        fiber = 1
-    elif spectrograph == 2:
-        fiber = 501
+def file_deets(plate, mjd, gather=False):
+    fiber = 1
     spec_path = finder.get_spec_path(plate, mjd, fiber, lite=False)
     spec_path = manager.get(spec_path)
     spec = bdspec.SpecFile(spec_path)
+    exposure_list = spec.exposures.table['science'][0:(spec.num_exposures/2)]
 
     exposure_data = np.empty((spec.num_exposures/2, ),
-                        dtype=[('PLATE', int), ('MJD', int), ('SPECTROGRAPH', int), ('PLUG_RA', float), ('PLUG_DEC', float),
-                            ('R_EXTNAME', '|S30'), ('B_EXTNAME', '|S30'), ('EXP_ORDER', int), ('RA', float), ('DEC', float),
-                            ('AZ', float), ('ALT', float), ('AIRMASS', float), ('R_QUALITY', '|S15'), ('B_QUALITY', '|S15'),
-                            ('TAI-BEG', dt.datetime), ('TAI-END', dt.datetime)])
-    for i in range(spec.num_exposures/2):
-        exp_header = spec.get_exposure_hdu(i, 'r'+str(spectrograph) ).read_header()
-        b_exp_header = spec.get_exposure_hdu(i, 'b'+str(spectrograph) ).read_header()
-        exposure_data[i] = (int(plate), int(mjd), int(spectrograph), float(spec.header['PLUG_RA']), float(spec.header['PLUG_DEC']),
-                        exp_header['EXTNAME'], b_exp_header['EXTNAME'], i, exp_header['RA'], exp_header['DEC'],
+                        dtype=[('PLATE', int), ('MJD', int), ('EXP_ID', "|S6"), ('RA', float), ('DEC', float),
+                            ('AZ', float), ('ALT', float), ('AIRMASS', float), ('TAI-BEG', dt.datetime), ('TAI-END', dt.datetime)])
+    print spec.exposures.sequence
+    for i, exp in enumerate(spec.exposures.sequence):
+        exp_header = spec.get_exposure_hdu(i, 'r1').read_header()
+        exposure_data[i] = (int(plate), int(mjd), exp,
+                        exp_header['RA'], exp_header['DEC'],
                         exp_header['AZ'], exp_header['ALT'], exp_header['AIRMASS'],
-                        exp_header['QUALITY'], b_exp_header['QUALITY'],
                         tai_base_date_time + dt.timedelta(seconds=exp_header['TAI-BEG']),
                         tai_base_date_time + dt.timedelta(seconds=exp_header['TAI-END']))
     if not gather:
@@ -74,16 +68,13 @@ def main():
         progress_bar = ProgressBar(widgets=[Percentage(), Bar()], maxval=len(plates_table)).start()
         counter = 0
         for row in plates_table:
-            exposure_data = file_deets(row['PLATE'], row['MJD'], 1, gather=True)
-            if exposure_data is not None:
-                exposure_table_list.append(Table(exposure_data))
-            exposure_data = file_deets(row['PLATE'], row['MJD'], 2, gather=True)
+            exposure_data = file_deets(row['PLATE'], row['MJD'], gather=True)
             if exposure_data is not None:
                 exposure_table_list.append(Table(exposure_data))
             counter += 1
             progress_bar.update(counter)
         progress_bar.finish()
-        
+
         if len(exposure_table_list):
             if len(exposure_table_list) > 1:
                 exposure_table = vstack(exposure_table_list)

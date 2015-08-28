@@ -7,11 +7,11 @@ import sys
 
 import stack
 
-block_sizes = [8,12,20,120]
-base_stds = [0.4, 0.6, 0.9, 1.1]
+block_sizes = [8,12,20]
+base_stds = [0.5, 0.75, 0.9]
 
-noisy_cutoffs = [1.75, 2.5, 3]
-noisy_sizes = [30, 40, 120]
+noisy_cutoffs = [1.35, 1.6] #, 1.75]
+noisy_sizes = [30, 40] #, 60]
 
 # There are several issues with this implementation/algorithm
 #
@@ -110,8 +110,6 @@ def kill_peaks(work_wlen, work_data, block_size, block_offset=0, cutoff=None, is
     overs[mask] = np.interp(x[mask], x[~mask], overs[~mask])
     ins[mask] = np.interp(x[mask], x[~mask], ins[~mask])
 
-    block_start = np.rint(stack.get_stacked_fiducial_wlen_pixel_offset(8600)) // block_size
-
     n = block_size
     new_work_data = work_data_cp.copy()
 
@@ -125,6 +123,9 @@ def kill_peaks(work_wlen, work_data, block_size, block_offset=0, cutoff=None, is
     else:
         if cutoff is None:
             cutoff = noisy_cutoffs[0]
+        hard_stdev_mask = (stdevs >= cutoff)
+        overs[hard_stdev_mask] = (overs[hard_stdev_mask] + np.interp(x[hard_stdev_mask], x[~hard_stdev_mask], overs[~hard_stdev_mask]))/2
+
         stdev_rows = np.where(stdevs > cutoff)
         new_work_data[stdev_rows,:] = overs[stdev_rows,np.newaxis]
 
