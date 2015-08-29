@@ -6,6 +6,7 @@ from astropy.table import vstack
 from astropy.table import join
 
 from sklearn import ensemble
+from sklearn import preprocessing as skpp
 
 import fnmatch
 import os
@@ -90,6 +91,12 @@ def get_feature_importances(data_table, obs_metadata, lines_table, use_con_flux=
                 'learning_rate': 0.01, 'loss': 'lad'}
         clf = ensemble.GradientBoostingRegressor(**params)
         X = ndarrayidze(X)
+
+        # Scaling is optional, but I think I'm going to do it (for now) for all methods,
+        # just in comparing between valued here and with e.g. ICA there are fewer diffs
+        X = skpp.scale(X)
+        y = skpp.scale(y)
+
         clf.fit(X, y)
         feature_importances_list.append(clf.feature_importances_)
 

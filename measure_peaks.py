@@ -6,6 +6,7 @@ from astropy.table import vstack
 from astropy.utils.compat import argparse
 
 import scipy.integrate as intg
+from scipy.signal import find_peaks_cwt
 
 import fnmatch
 import os
@@ -79,8 +80,9 @@ total_dtype=[('total_type', object), ('source', object), ('wavelength_target', f
             ('wavelength_peak', float), ('peak_delta', float),
             ('peak_delta_over_width', float), ('total_flux', float), ('total_con_flux', float)]
 
-max_peak_width = 15
-seek_peaks = False
+max_peak_width = 20
+peak_widths = [3,7,max_peak_width]
+seek_peaks = True
 
 def main():
     path = "."
@@ -99,25 +101,14 @@ def main():
             idstr = file[:file.rfind('.')]
 
             peak_flux_list = []
+            '''
             for key, vals in line_markers.items():
                 target_flux_totals = get_total_flux(key, data['wavelength'], data['flux'], data['con_flux'], vals)
                 peak_flux_list.append(target_flux_totals)
-
+            '''
             #Now have the peaks (or not) for known lines; find "unknown" peaks
             if seek_peaks:
-                for peaks in peak_flux_list:
-                    data = mask_known_peaks(data, peaks)
-                line = get_next_unknown_peak(data)
-                while line > 0:
-                    target_flux_totals = get_total_flux("UNKNOWN", data['wavelength'], data['flux'], data['con_flux'], line)
-                    print target_flux_totals
-                    if target_flux_totals['index_upper_bound'] != 0:
-                        peak_flux_list.append(target_flux_totals)
-                        data = mask_known_peaks(data, target_flux_totals)
-                    else:
-                        get_next_unknown_peak(data, repeat_kill=True)
-
-                    line = get_next_unknown_peak(data)
+                peak_flux = find_and_measure_peaks(data, peak_flux_list)
 
             #Let's just forget this for now
             '''
@@ -126,11 +117,59 @@ def main():
                 peak_flux_list.append(target_flux_totals)
             '''
 
-            save_data(peak_flux_list, idstr)
+            save_data(peak_flux, idstr)
 
-def save_data(peak_flux_list, idstr):
+def find_and_measure_peaks(data, peak_flux_list=[], use_flux_con=True):
+    arr = []
+    if len(peak_flux_list) > 0:
+        arr = rfn.stack_arrays(peak_flux_list)
+
+    found_peaks, found_inds = real_find_peaks(data)
+    removed = False
+    for candidate_peak, candidate_ind in zip(found_peaks, found_inds):
+        removed = False
+        if candidate_peak is np.ma.masked:
+            continue
+        for peak in arr:
+            if (candidate_peak > peak['wavelength_lower_bound'] and
+                    candidate_peak < peak['wavelength_upper_bound']  and
+                    np.abs(candidate_ind - peak['index_lower_bound']) >= max_peak_width and
+                    np.abs(candidate_ind - peak['index_upper_bound']) >= max_peak_width):
+                found_peaks.remove(peak)
+                removed=True
+                break
+        if ~removed:
+            target_flux_totals = get_total_flux("UNKNOWN", data['wavelength'], data['flux'],
+                                None if not use_flux_con else data['con_flux'], candidate_peak)
+            peak_flux_list.append(target_flux_totals)
+
+    #Now, need to prune the list
     arr = rfn.stack_arrays(peak_flux_list)
     peak_flux = Table(data=arr)
+
+    peak_flux.remove_rows(np.abs(peak_flux['peak_delta']) > max_peak_width)
+    peak_flux = filter_for_overlaps(peak_flux, ['index_lower_bound', 'index_upper_bound'])
+    peak_flux = filter_for_overlaps(peak_flux, ['index_lower_bound'])
+    peak_flux = filter_for_overlaps(peak_flux, ['index_upper_bound'])
+
+    return peak_flux
+
+def filter_for_overlaps(peak_flux, cols):
+    peak_flux_filtered_list = []
+
+    group_peak_flux = peak_flux.group_by(cols)
+    for group in group_peak_flux.groups:
+        if len(group) > 1:
+            min_peak_delta = np.min(np.abs(group['peak_delta']))
+            peak_flux_filtered_list.append(group[group['peak_delta'] == min_peak_delta])
+        else:
+            peak_flux_filtered_list.append(group[0])
+    peak_flux_filtered_arr = rfn.stack_arrays(peak_flux_filtered_list)
+    peak_flux = Table(data=peak_flux_filtered_arr)
+
+    return peak_flux
+
+def save_data(peak_flux, idstr):
     peak_flux.write('{}-peaks.csv'.format(idstr), format='ascii.csv')
 
 def mask_range(data, start_ind, end_ind):
@@ -139,29 +178,25 @@ def mask_range(data, start_ind, end_ind):
         data[col].mask[start_ind:end_ind+1] = True
 
 def mask_known_peaks(data, peaks):
+    peaks_mask = np.zeros( (len(data), ), dtype=bool)
+
     for peak in peaks:
         if peak['index_upper_bound'] != 0:
             mask_range(data, peak['index_lower_bound'], peak['index_upper_bound'])
-    return data
+            peaks_mask[peak['index_lower_bound']:peak['index_upper_bound']+1] = True
 
-def get_next_unknown_peak(data, repeat_kill=False):
-    peak_ind = np.ma.argmax(data['flux'])
-    lower_ind = peak_ind - (max_peak_width // 2)
-    if lower_ind < 0:
-        lower_ind = 0
-    upper_ind = lower_ind + max_peak_width
-    if upper_ind >= len(data):
-        upper_ind = len(data) - 1
+    return peaks_mask
 
-    if repeat_kill:
-        mask_range(data, lower_ind, upper_ind)
-        return -1
-
-    stddev = np.ma.std(data['flux'][lower_ind:upper_ind])
-    print stddev
-    if stddev < 0.01 and stddev > 0:
-        return 0
-    return data['wavelength'][peak_ind]
+def real_find_peaks(data,cols=['flux']):
+    val = data[cols[0]]
+    if len(cols) > 1:
+        for col_name in cols[1:]:
+            val += data[col_name]
+    peak_inds = find_peaks_cwt(val, np.array(peak_widths), noise_perc=5)
+    peaks = []
+    for ind in peak_inds:
+        peaks.append(data['wavelength'][ind])
+    return peaks, peak_inds
 
 def get_total_flux(label, wlen, flux, con_flux, target_wlens=None, wlen_spans=None):
     #old = np.seterr(all='raise')
@@ -219,16 +254,16 @@ def get_total_flux(label, wlen, flux, con_flux, target_wlens=None, wlen_spans=No
                 new_over_offset = over_offset + over_over_offset
                 over_offset = new_over_offset
             '''
-            if (np.ma.min( flux[max(0, under_offset-4):under_offset]) < (flux[under_offset] / 2)) and \
-                    (np.ma.max( flux[max(0, under_offset-4):under_offset+1]) < np.ma.max(flux[under_offset:over_offset+1]) / 5):
+            if (np.ma.min( flux[max(0, under_offset-(max_peak_width//2)):under_offset]) < (flux[under_offset] / 2)) and \
+                    (np.ma.max( flux[max(0, under_offset-(max_peak_width//2)):under_offset+1]) < np.ma.max(flux[under_offset:over_offset+1]) / 5):
                 #Start block
-                under_under_offset = np.ma.argmin( flux[max(0, under_offset-4):under_offset+1])
-                new_under_offset = under_offset - (4-under_under_offset)
+                under_under_offset = np.ma.argmin( flux[max(0, under_offset-(max_peak_width//2)):under_offset+1])
+                new_under_offset = under_offset - ((max_peak_width//2)-under_under_offset)
                 under_offset = new_under_offset
-            if (np.ma.min( flux[over_offset+1:min(over_offset+5, len(wlen))]) < (flux[over_offset] / 2)) and \
-                    (np.ma.max( flux[over_offset+1:min(over_offset+5, len(wlen))]) < np.ma.max(flux[under_offset:over_offset+1]) / 5):
+            if (np.ma.min( flux[over_offset+1:min(over_offset+(max_peak_width//2), len(wlen))]) < (flux[over_offset] / 2)) and \
+                    (np.ma.max( flux[over_offset+1:min(over_offset+(max_peak_width//2), len(wlen))]) < np.ma.max(flux[under_offset:over_offset+1]) / 5):
                 #Start block
-                over_over_offset = np.ma.argmin( flux[over_offset+1:min(over_offset+5, len(wlen))])
+                over_over_offset = np.ma.argmin( flux[over_offset+1:min(over_offset+(max_peak_width//2), len(wlen))])
                 new_over_offset = over_offset + over_over_offset
                 over_offset = new_over_offset
 
@@ -236,7 +271,8 @@ def get_total_flux(label, wlen, flux, con_flux, target_wlens=None, wlen_spans=No
             nonmasked_end = int(np.ma.notmasked_edges(flux[over_offset:])[0])
 
             flux_filled = flux[nonmasked_start:over_offset+nonmasked_end+1]
-            con_flux_filled = con_flux[nonmasked_start:over_offset+nonmasked_end+1]
+            if con_flux is not None:
+                con_flux_filled = con_flux[nonmasked_start:over_offset+nonmasked_end+1]
             wlen_filled = wlen[nonmasked_start:over_offset+nonmasked_end+1]
             int_filled = np.arange(len(wlen_filled))
             mask_arr = wlen_filled.mask.copy()
@@ -246,7 +282,8 @@ def get_total_flux(label, wlen, flux, con_flux, target_wlens=None, wlen_spans=No
             try:
                 wlen_filled[mask_arr] = np.interp(int_filled[mask_arr], int_filled[~mask_arr], wlen_filled[~mask_arr])
                 flux_filled[mask_arr] = np.interp(wlen_filled[mask_arr], wlen_filled[~mask_arr], flux_filled[~mask_arr])
-                con_flux_filled[mask_arr] = np.interp(wlen_filled[mask_arr], wlen_filled[~mask_arr], con_flux_filled[~mask_arr])
+                if con_flux is not None:
+                    con_flux_filled[mask_arr] = np.interp(wlen_filled[mask_arr], wlen_filled[~mask_arr], con_flux_filled[~mask_arr])
 
                 start_ind = under_offset - nonmasked_start
                 end_ind = over_offset+1 - nonmasked_end
@@ -254,7 +291,9 @@ def get_total_flux(label, wlen, flux, con_flux, target_wlens=None, wlen_spans=No
                     end_ind=None
 
                 total = intg.simps(flux_filled[start_ind:end_ind], wlen_filled[start_ind:end_ind])
-                con_total = intg.simps(con_flux_filled[start_ind:end_ind], wlen_filled[start_ind:end_ind])
+                con_total = 0
+                if con_flux is not None:
+                    con_total = intg.simps(con_flux_filled[start_ind:end_ind], wlen_filled[start_ind:end_ind])
                 range_start = wlen[under_offset]
                 range_end = wlen[over_offset]
                 range_peak = wlen_filled[flux_filled.argsort()[-1]]

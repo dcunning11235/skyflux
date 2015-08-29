@@ -6,6 +6,7 @@ import os.path
 import sys
 
 import stack
+import measure_peaks
 
 block_sizes = [8,12,20]
 base_stds = [0.5, 0.75, 0.9]
@@ -53,12 +54,17 @@ def main():
     for file in os.listdir(path):
         if fnmatch.fnmatch(file, pattern):
             data = Table(Table.read(os.path.join(path, file), format="ascii"), masked=True)
+            orig_mask = (data['flux'] == 0)
             data.mask = [(data['flux'] == 0)]*len(data.columns)
             idstr = file[:file.rfind('.')]
 
-            print file
-            continuum, wo_continuum = smoothing(data['wavelength'],
-                data['flux'], data.mask, idstr=idstr, keep_chunky=True, block_sizes=block_sizes)
+            peaks = measure_peaks.find_and_measure_peaks(data, use_flux_con=False)
+            peaks_mask = measure_peaks.mask_known_peaks(data, peaks)
+            data.mask = [orig_mask]*len(data.columns)
+
+            continuum, wo_continuum = smoothing(data['wavelength'], data['flux'], peaks_mask,
+                                        orig_mask, idstr=idstr, keep_chunky=True, block_sizes=block_sizes)
+
             save_data(data['wavelength'], wo_continuum, continuum, data['ivar'], idstr)
 
 def save_data(wlen, flux, con_flux, ivar, idstr):
@@ -66,9 +72,16 @@ def save_data(wlen, flux, con_flux, ivar, idstr):
     continuum_table = Table([wlen.data, flux.filled(0), con_flux.filled(0), ivar.filled(0)], names=["wavelength", "flux", "con_flux", "ivar"])
     continuum_table.write("{}-continuum.csv".format(idstr), format="ascii.csv")
 
-def smoothing(work_wlen, work_data, orig_mask, block_sizes, idstr=None, keep_chunky=False):
-    work_data_cp = np.ma.mean( [kill_peaks(work_wlen, work_data, block, cutoff=cutoff, is_noisy=True) for block, cutoff in zip(noisy_sizes, noisy_cutoffs)], axis=0 )
-    work_data_cp = np.ma.mean( [kill_peaks(work_wlen, work_data_cp, block, cutoff=cutoff) for block, cutoff in zip(block_sizes, base_stds)], axis=0 )
+def smoothing(work_wlen, work_data, peaks_mask, orig_mask, block_sizes, idstr=None, keep_chunky=False):
+    work_wlen_cp = work_wlen.copy()
+    work_data_cp = work_data.copy()
+
+    work_data_cp = np.ma.mean( [kill_peaks(work_wlen_cp, work_data_cp, peaks_mask, orig_mask, block,
+                                    cutoff=cutoff, is_noisy=True) for block, cutoff in
+                                    zip(noisy_sizes, noisy_cutoffs)], axis=0 )
+    work_data_cp = np.ma.mean( [kill_peaks(work_wlen_cp, work_data_cp, peaks_mask, orig_mask,
+                                    block, cutoff=cutoff) for block, cutoff in
+                                    zip(block_sizes, base_stds)], axis=0 )
 
     #work_data_cp = np.ma.mean( [kill_peaks(work_data, block) for block in block_sizes], axis=0 )
 
@@ -80,60 +93,43 @@ def smoothing(work_wlen, work_data, orig_mask, block_sizes, idstr=None, keep_chu
 
     return cont_flux, work_data-cont_flux
 
-def kill_peaks(work_wlen, work_data, block_size, block_offset=0, cutoff=None, is_noisy=False):
-    work_data_cp = work_data[block_offset:]
-    '''
-    work_wlen_cp = work_wlen[block_offset:]
+def kill_peaks(work_wlen_cp, work_data_cp, peaks_mask, orig_mask, block_size, block_offset=0,
+                cutoff=None, is_noisy=False):
+    combined_mask = peaks_mask | orig_mask
+    work_data_cp[combined_mask] = np.interp(work_wlen_cp[combined_mask], work_wlen_cp[~combined_mask], work_data_cp[~combined_mask])
 
-    int_filled = np.arange(len(work_data_cp))
-    mask_arr = work_data_cp.mask.copy()
-    work_data_cp.mask = np.ma.nomask
-    work_wlen_cp.mask = np.ma.nomask
-    work_wlen_cp[mask_arr] = np.interp(int_filled[mask_arr], int_filled[~mask_arr], work_wlen_cp[~mask_arr])
-    work_data_cp[mask_arr] = np.interp(work_wlen_cp[mask_arr], work_wlen_cp[~mask_arr], work_data_cp[~mask_arr])
+    #global_min = np.ma.min(work_data_cp)
+    #global_avg = np.ma.mean(work_data_cp)
 
-    print work_data_cp[5231:5281]
-    print np.ma.count_masked(work_data_cp)
-    '''
-
-    work_data_cp = work_data_cp.reshape(( (len(work_data)-block_offset)/block_size, block_size))
+    work_data_cp = work_data_cp.reshape(( (len(work_data_cp)-block_offset)/block_size, block_size))
     masked_count = np.ma.count_masked(work_data_cp, axis=1)
     stdevs = np.ma.std(work_data_cp, axis=1)
     overs = np.ma.min(work_data_cp, axis=1)
     ins = np.ma.mean(work_data_cp, axis=1)
 
-    stdevs[masked_count > (block_size/3)] = 0
+    stdevs[masked_count > (block_size/4)] = 0
 
     x = np.arange(len(stdevs))
-    mask = (stdevs == 0)
+    mask = (stdevs == 0) & (overs == 0)
+
+    overs[overs < global_min] = global_min
+
     stdevs[mask] = np.interp(x[mask], x[~mask], stdevs[~mask])
     overs[mask] = np.interp(x[mask], x[~mask], overs[~mask])
     ins[mask] = np.interp(x[mask], x[~mask], ins[~mask])
 
-    n = block_size
     new_work_data = work_data_cp.copy()
 
     if not is_noisy:
-        if cutoff is None:
-            cutoff = base_stds[0]
         stdev_rows = np.where(stdevs <= cutoff)
         new_work_data[stdev_rows,:] = ins[stdev_rows,np.newaxis]
         stdev_rows = np.where(stdevs > cutoff)
         new_work_data[stdev_rows,:] = overs[stdev_rows,np.newaxis]
     else:
-        if cutoff is None:
-            cutoff = noisy_cutoffs[0]
-        hard_stdev_mask = (stdevs >= cutoff)
-        overs[hard_stdev_mask] = (overs[hard_stdev_mask] + np.interp(x[hard_stdev_mask], x[~hard_stdev_mask], overs[~hard_stdev_mask]))/2
-
         stdev_rows = np.where(stdevs > cutoff)
         new_work_data[stdev_rows,:] = overs[stdev_rows,np.newaxis]
 
     new_work_data = new_work_data.reshape((new_work_data.size,))
-    if new_work_data.size < len(work_data):
-        temp = np.ma.empty_like(work_data)
-        temp[block_offset:] = new_work_data
-        temp[:block_offset] = new_work_data[0]
     new_work_data.mask = work_data_cp.mask
 
     return new_work_data
