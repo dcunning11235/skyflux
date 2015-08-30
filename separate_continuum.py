@@ -100,18 +100,23 @@ def kill_peaks(work_wlen_cp, work_data_cp, peaks_mask, orig_mask, block_size, bl
     overs = np.ma.min(work_data_cp, axis=1)
     ins = np.ma.mean(work_data_cp, axis=1)
 
+    '''
     stdevs[masked_count > (block_size/4)] = 0
     x = np.arange(len(stdevs))
     mask = (stdevs == 0) & (overs == 0)
+    '''
+
     #begin_block_mask = begin_orig_mask // block_size
     #end_block_mask = end_orig_mask // block_size
     #mask[:begin_block_mask] = False
     #mask[end_block_mask:] = False
 
+    '''
     stdevs[mask] = np.interp(x[mask], x[~mask], stdevs[~mask])
     overs[mask] = np.interp(x[mask], x[~mask], overs[~mask])
     ins[mask] = np.interp(x[mask], x[~mask], ins[~mask])
-
+    '''
+    
     new_work_data = work_data_cp.copy()
 
     if not is_noisy:

@@ -74,8 +74,8 @@ total_dtype=[('total_type', object), ('source', object), ('wavelength_target', f
             ('wavelength_peak', float), ('peak_delta', float),
             ('peak_delta_over_width', float), ('total_flux', float), ('total_con_flux', float)]
 
-max_peak_width = 20
-peak_widths = [3,7,max_peak_width]
+max_peak_width = 30
+peak_widths = np.array([3,10,20,max_peak_width])
 
 def main():
     path = "."
@@ -179,7 +179,7 @@ def real_find_peaks(data,cols=['flux']):
     if len(cols) > 1:
         for col_name in cols[1:]:
             val += data[col_name]
-    peak_inds = find_peaks_cwt(val, np.array(peak_widths), noise_perc=5)
+    peak_inds = find_peaks_cwt(val, peak_widths, max_distances=peak_widths/2, noise_perc=5)
     peaks = []
     for ind in peak_inds:
         peaks.append(data['wavelength'][ind])

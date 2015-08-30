@@ -13,7 +13,7 @@ from numpy.lib import recfunctions as rfn
 def plot_it(data, key, peaks_table=None):
     data = Table(data, masked=True)
     if 'ivar' in data.colnames:
-        data.mask = [(data['flux'] == 0) | (np.abs(data['ivar']) <= 0.0001)]*len(data.columns)
+        data.mask = [(data['ivar'] == 0) | (np.abs(data['ivar']) <= 0.0001)]*len(data.columns)
     else:
         data.mask = [(data['flux'] == 0)]*len(data.columns)
 
