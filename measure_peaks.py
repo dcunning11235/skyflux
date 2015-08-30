@@ -17,17 +17,11 @@ import stack
 
 import numpy.lib.recfunctions as rfn
 
-# I need to separate these into "good" line markers (aka, ones I can pull out of the continuum
-# files with some minimum separation between peak and known line wavelengths) and "bad"
-# line_markers
-#
-# I also need to build something that finds peaks automatically...
-#
-# Also, need (???) to handle cases where peaks are spread beyond 10 buckets; this actually
-# happens in a few cases (e.g. ~4982, a Na line/peak)
-#
-# Also also, need to deal with continum jumps OR, actually fix the continuum calc (the latter
-# being the better option, but maybe more complicated)
+# New method for peak detection using scipy.signal.find_peaks_cwt.  Have, for now at least
+# completely stopped using these line_marker dicts at the top of the file.  What I should do
+# is get a database of emission lines for the key atomic peaks:  N, Na, Li, Hg, O, etc. and
+# have a last step before output be a matching step where peaks are matched to the their
+# closest (within some range) matching emission line.  Where can I get OH, CO2, H2O lines?
 
 line_markers = {
     "Ar": [5087.1, 8849.9], #Mayyyybe?  Or Krypton?  Or something...
@@ -82,7 +76,6 @@ total_dtype=[('total_type', object), ('source', object), ('wavelength_target', f
 
 max_peak_width = 20
 peak_widths = [3,7,max_peak_width]
-seek_peaks = True
 
 def main():
     path = "."
@@ -96,21 +89,14 @@ def main():
     for file in os.listdir(path):
         if fnmatch.fnmatch(file, pattern):
             data = Table(Table.read(os.path.join(path, file), format="ascii"), masked=True)
-            data.mask = [(data['flux'] == 0)]*len(data.columns)
+            data.mask = [(data['ivar'] == 0)]*len(data.columns)
             data['wavelength'].mask = False
             idstr = file[:file.rfind('.')]
 
             peak_flux_list = []
-            '''
-            for key, vals in line_markers.items():
-                target_flux_totals = get_total_flux(key, data['wavelength'], data['flux'], data['con_flux'], vals)
-                peak_flux_list.append(target_flux_totals)
-            '''
-            #Now have the peaks (or not) for known lines; find "unknown" peaks
-            if seek_peaks:
-                peak_flux = find_and_measure_peaks(data, peak_flux_list)
+            peak_flux = find_and_measure_peaks(data, peak_flux_list)
 
-            #Let's just forget this for now
+            #Let's just forget this for now; spans are maybe something to come back to
             '''
             for key, vals in wlen_spans.items():
                 target_flux_totals = get_total_flux(key, data['wavelength'], data['flux'], data['con_flux'], target_wlens=None, wlen_spans=vals)
@@ -126,6 +112,7 @@ def find_and_measure_peaks(data, peak_flux_list=[], use_flux_con=True):
 
     found_peaks, found_inds = real_find_peaks(data)
     removed = False
+
     for candidate_peak, candidate_ind in zip(found_peaks, found_inds):
         removed = False
         if candidate_peak is np.ma.masked:
@@ -135,7 +122,7 @@ def find_and_measure_peaks(data, peak_flux_list=[], use_flux_con=True):
                     candidate_peak < peak['wavelength_upper_bound']  and
                     np.abs(candidate_ind - peak['index_lower_bound']) >= max_peak_width and
                     np.abs(candidate_ind - peak['index_upper_bound']) >= max_peak_width):
-                found_peaks.remove(peak)
+                #found_peaks.remove(peak)
                 removed=True
                 break
         if ~removed:
@@ -236,24 +223,6 @@ def get_total_flux(label, wlen, flux, con_flux, target_wlens=None, wlen_spans=No
                 continue
 
             #Now, try to account for cases where peaks are jagged and we're stuck on a small dip
-            '''
-            if (np.ma.min( flux[max(0, under_offset-4):under_offset] - con_flux[max(0, under_offset-4):under_offset]) <
-                    (flux[under_offset] - con_flux[under_offset]) / 2) and \
-                (np.ma.max( flux[max(0, under_offset-4):under_offset+1] - con_flux[max(0, under_offset-4):under_offset+1]) <
-                    np.ma.max(flux[under_offset:over_offset+1] - con_flux[under_offset:over_offset+1]) / 5):
-                #Start block
-                under_under_offset = np.ma.argmin( flux[max(0, under_offset-4):under_offset+1] - con_flux[max(0, under_offset-4):under_offset+1])
-                new_under_offset = under_offset - (4-under_under_offset)
-                under_offset = new_under_offset
-            if (np.ma.min( flux[over_offset+1:min(over_offset+5, len(wlen))] - con_flux[over_offset+1:min(over_offset+5, len(wlen))]) <
-                    (flux[over_offset] - con_flux[over_offset]) / 2) and \
-                (np.ma.max( flux[over_offset+1:min(over_offset+5, len(wlen))] - con_flux[over_offset+1:min(over_offset+5, len(wlen))]) <
-                    np.ma.max(flux[under_offset:over_offset+1] - con_flux[under_offset:over_offset+1]) / 5):
-                #Start block
-                over_over_offset = np.ma.argmin( flux[over_offset+1:min(over_offset+5, len(wlen))] - con_flux[over_offset+1:min(over_offset+5, len(wlen))])
-                new_over_offset = over_offset + over_over_offset
-                over_offset = new_over_offset
-            '''
             if (np.ma.min( flux[max(0, under_offset-(max_peak_width//2)):under_offset]) < (flux[under_offset] / 2)) and \
                     (np.ma.max( flux[max(0, under_offset-(max_peak_width//2)):under_offset+1]) < np.ma.max(flux[under_offset:over_offset+1]) / 5):
                 #Start block
