@@ -7,6 +7,7 @@ from astropy.table import vstack
 from astropy.table import join
 
 from sklearn.decomposition import FastICA
+from sklearn.decomposition import PCA
 from sklearn import preprocessing as skpp
 
 import fnmatch
@@ -24,7 +25,8 @@ def load_all_in_dir(path, use_con_flux=True, recombine_flux=False):
 
     for file in os.listdir(path):
         if fnmatch.fnmatch(file, pattern):
-            data = Table.read(os.path.join(path, file), format="ascii.csv")
+            data = Table(Table.read(os.path.join(path, file), format="ascii.csv"), masked=True)
+            data.mask = [data['ivar'] == 0]*len(data.colnames)
             exp = int(file.split("-")[2][3:])
             exp_col = Column([exp]*len(data), name="EXP_ID")
 
@@ -64,15 +66,47 @@ def main():
     if len(sys.argv) == 2:
         path = sys.argv[1]
     flux_arr, exposure_list, wavelengths = load_all_in_dir(path, use_con_flux=True, recombine_flux=False)
-    #obs_metadata = gbk.trim_observation_metadata(gbk.load_observation_metadata(path))
-    ica = FastICA(n_components = 20, whiten=True, max_iter=500, fun='exp', random_state=1234975)
-    eigen_spectra_comps = ica.fit(flux_arr).transform(flux_arr)
 
-    print eigen_spectra_comps
-    print eigen_spectra_comps.shape
+    ica = FastICA(n_components = 100, whiten=True, max_iter=100, random_state=1234975)
+    sources = ica.fit_transform(flux_arr)
+    print flux_arr.shape
+    print sources.shape
+    print ica.components_.shape
+    x = np.arange(sources.shape[1])
 
-    print ica.components_
-    print ica.transform(flux_arr[0])
+    for i in range(len(ica.components_)):
+        plt.plot(wavelengths, ica.components_[i,:] + i)
+    plt.show()
+    plt.close()
+
+    for i in range(1):
+        plt.plot(x, sources[i] + i)
+    plt.show()
+    plt.close()
+
+    for i in range(1):
+        plt.plot(wavelengths, flux_arr[i,:])
+    plt.show()
+    plt.close()
+
+    pca = PCA(n_components = 10, whiten=True)
+    source = pca.fit_transform(flux_arr)
+
+    for i in range(len(pca.components_)):
+        plt.plot(wavelengths, pca.components_[i,:] + i)
+    plt.show()
+    plt.close()
+
+    for i in range(1):
+        plt.plot(x, sources[i] + i)
+    plt.show()
+    plt.close()
+
+    for i in range(1):
+        plt.plot(wavelengths, flux_arr[i,:])
+    plt.show()
+    plt.close()
+
 
 if __name__ == '__main__':
     main()

@@ -12,6 +12,7 @@ import fnmatch
 import os
 import os.path
 import sys
+import time
 
 import stack
 
@@ -77,6 +78,9 @@ total_dtype=[('total_type', object), ('source', object), ('wavelength_target', f
 max_peak_width = 30
 peak_widths = np.array([3,10,20,max_peak_width])
 
+all_timing = False
+ts = time.time()
+
 def main():
     path = "."
     pattern = ""
@@ -105,12 +109,16 @@ def main():
 
             save_data(peak_flux, idstr)
 
-def find_and_measure_peaks(data, peak_flux_list=[], use_flux_con=True):
-    arr = []
-    if len(peak_flux_list) > 0:
-        arr = rfn.stack_arrays(peak_flux_list)
+def find_and_measure_peaks(data, peak_flux_list=None, use_flux_con=True):
+    global ts
 
+    arr = []
+    if peak_flux_list is None:
+        peak_flux_list = []
+
+    ts = mark_time()
     found_peaks, found_inds = real_find_peaks(data)
+    ts = mark_time('real_find_peaks', ts)
     removed = False
 
     for candidate_peak, candidate_ind in zip(found_peaks, found_inds):
@@ -126,18 +134,24 @@ def find_and_measure_peaks(data, peak_flux_list=[], use_flux_con=True):
                 removed=True
                 break
         if ~removed:
+            #ts = mark_time()
             target_flux_totals = get_total_flux("UNKNOWN", data['wavelength'], data['flux'],
                                 None if not use_flux_con else data['con_flux'], candidate_peak)
+            #ts = mark_time('get_total_flux', ts)
             peak_flux_list.append(target_flux_totals)
+    ts = mark_time('flux loop', ts)
 
     #Now, need to prune the list
     arr = rfn.stack_arrays(peak_flux_list)
+    ts = mark_time('stack_arrays', ts)
     peak_flux = Table(data=arr)
+    ts = mark_time('create table', ts)
 
     peak_flux.remove_rows(np.abs(peak_flux['peak_delta']) > max_peak_width)
     peak_flux = filter_for_overlaps(peak_flux, ['index_lower_bound', 'index_upper_bound'])
     peak_flux = filter_for_overlaps(peak_flux, ['index_lower_bound'])
     peak_flux = filter_for_overlaps(peak_flux, ['index_upper_bound'])
+    ts = mark_time('filter_for_overlaps', ts)
 
     return peak_flux
 
@@ -292,6 +306,15 @@ def get_total_flux(label, wlen, flux, con_flux, target_wlens=None, wlen_spans=No
             ind += 1
 
     return ret
+
+def mark_time(idstr=None, last_time=None):
+    new_time = time.time()
+
+    if all_timing:
+        if last_time is not None:
+            print idstr, "took ", (new_time - last_time), "to execute."
+
+    return new_time
 
 if __name__ == '__main__':
     main()
