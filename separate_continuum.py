@@ -12,12 +12,12 @@ import time
 import stack
 import measure_peaks
 
-block_sizes = [8,12,20]
-base_stds = [0.4, 0.6, 0.75]
-
-noisy_cutoffs = [1.2, 1.4]
-#noisy_cutoffs = [1.55, 1.8] #, 1.75]
-noisy_sizes = [30, 40] #, 60]
+# Magic numbers.... oooohhhhhhhh!
+block_sizes = np.array([8,12,20])
+base_stds = np.array([0.7, 0.9, 1])
+noisy_cutoffs = np.array([1.85])
+noisy_sizes = np.array([60])
+split_noisy_app = 2640
 
 all_timing = False
 main_timing = False
@@ -54,18 +54,54 @@ def main():
             peaks = measure_peaks.find_and_measure_peaks(data, use_flux_con=False)
             ts = mark_time("measure_peaks.find_and_measure_peaks", ts)
             peaks_mask = measure_peaks.mask_known_peaks(data, peaks)
+            #peaks_mask = np.zeros((7080,), dtype=bool)
             ts = mark_time("measure_peaks.mask_known_peaks", ts)
             data.mask = [orig_mask]*len(data.columns)
 
-            continuum, wo_continuum = smoothing(data['wavelength'], data['flux'], peaks_mask,
-                                        orig_mask, idstr=idstr, keep_chunky=False, block_sizes=block_sizes)
+            start_continuum, start_wo_continuum = smoothing(data['wavelength'][:split_noisy_app], data['flux'][:split_noisy_app],
+                                        peaks_mask[:split_noisy_app], orig_mask[:split_noisy_app],
+                                        idstr=idstr, block_sizes=block_sizes)
+            end_continuum, end_wo_continuum = smoothing(data['wavelength'][split_noisy_app:], data['flux'][split_noisy_app:],
+                                        peaks_mask[split_noisy_app:], orig_mask[split_noisy_app:],
+                                        idstr=idstr, block_sizes=block_sizes, mult=2)
             ts = mark_time("smoothing", ts)
+
+            wo_continuum = np.ma.concatenate([start_wo_continuum, end_wo_continuum])
+            continuum = np.ma.concatenate([start_continuum, end_continuum])
+            continuum, wo_continuum = tamp_down(continuum, wo_continuum)
+
+            continuum, wo_continuum = smooth(continuum, wo_continuum)
 
             save_data(data['wavelength'], wo_continuum, continuum, data['ivar'], orig_mask, idstr)
             ts = mark_time("save_data", ts)
 
-            del(peaks_mask)
-            del(peaks)
+def tamp_down(continuum, wo_continuum):
+    total = wo_continuum + continuum
+
+    def _moving_average(a, n=3):
+        ret = np.cumsum(a, dtype=float)
+        ret[n:] = ret[n:] - ret[:-n]
+        ret = np.concatenate([a[:(n-1)/2], ret[n-1:]/n, a[-(n-1)/2:]])
+        return ret
+
+    move_avg_cont = _moving_average(continuum, n=31)
+    move_avg_cont -= continuum
+    move_avg_cont[move_avg_cont > 0] = 0
+
+    continuum += move_avg_cont
+    wo_continuum = total - continuum
+
+    return continuum, wo_continuum
+
+def smooth(continuum, wo_continuum):
+    total = wo_continuum + continuum
+
+    g = Gaussian1DKernel(stddev=2)
+    continuum = convolve(continuum, g, boundary='extend')
+
+    wo_continuum = total - continuum
+
+    return continuum, wo_continuum
 
 def save_data(wlen, flux, con_flux, ivar, mask, idstr):
     wlen.mask = np.ma.nomask
@@ -76,30 +112,25 @@ def save_data(wlen, flux, con_flux, ivar, mask, idstr):
     continuum_table = Table([wlen.data, flux.filled(0), con_flux.filled(0), ivar.filled(0)], names=["wavelength", "flux", "con_flux", "ivar"])
     continuum_table.write("{}-continuum.csv".format(idstr), format="ascii.csv")
 
-def smoothing(work_wlen, work_data, peaks_mask, orig_mask, block_sizes, idstr=None, keep_chunky=False):
+def smoothing(work_wlen, work_data, peaks_mask, orig_mask, block_sizes, idstr=None, mult=1):
     work_wlen_cp = work_wlen.copy()
     work_data_cp = work_data.copy()
 
     work_data_cp = np.ma.mean( [kill_peaks(work_wlen_cp, work_data_cp, peaks_mask, orig_mask, block,
                                     cutoff=cutoff, is_noisy=True) for block, cutoff in
-                                    zip(noisy_sizes, noisy_cutoffs)], axis=0 )
+                                    zip(noisy_sizes*mult, noisy_cutoffs)], axis=0 )
     work_data_cp = np.ma.mean( [kill_peaks(work_wlen_cp, work_data_cp, peaks_mask, orig_mask,
                                     block, cutoff=cutoff) for block, cutoff in
                                     zip(block_sizes, base_stds)], axis=0 )
 
     #work_data_cp = np.ma.mean( [kill_peaks(work_data, block) for block in block_sizes], axis=0 )
 
-    if not keep_chunky:
-        g = Gaussian1DKernel(stddev=8)
-        #g = MexicanHat1DKernel(width=10)
-        z = convolve(work_data_cp, g, boundary='extend')
-
-    cont_flux = work_data_cp if keep_chunky else z
-
+    cont_flux = work_data_cp
     return cont_flux, work_data-cont_flux
 
 def kill_peaks(work_wlen_cp, work_data_cp, peaks_mask, orig_mask, block_size, block_offset=0,
                 cutoff=None, is_noisy=False):
+    data_len = len(work_data_cp)
     orig_mask_extents = np.where(~orig_mask)
     begin_orig_mask = np.min(orig_mask_extents)
     end_orig_mask = np.max(orig_mask_extents)
@@ -109,17 +140,19 @@ def kill_peaks(work_wlen_cp, work_data_cp, peaks_mask, orig_mask, block_size, bl
     work_data_cp[end_orig_mask:] = overall_average
 
     combined_mask = peaks_mask | orig_mask
-    #combined_mask[:begin_orig_mask] = False
-    #combined_mask[end_orig_mask:] = False
 
     #This unmaskes everything...
     work_data_cp[combined_mask] = np.interp(work_wlen_cp[combined_mask], work_wlen_cp[~combined_mask], work_data_cp[~combined_mask])
 
-    combined_mask = combined_mask.reshape( ( (len(work_data_cp)-block_offset)/block_size, block_size) )
-    masked_count = np.ma.sum(combined_mask, axis=1)
+    block_diff = data_len % block_size
+    working_slice = slice(None, None)
+    new_shape = ( (data_len-block_diff)/block_size, block_size)
+    working_slice = slice(0, data_len-block_diff)
+    leftovers = work_data_cp[-block_diff:]
+    work_data_cp = work_data_cp[working_slice].reshape(new_shape)
 
-    work_data_cp = work_data_cp.reshape(( (len(work_data_cp)-block_offset)/block_size, block_size))
-    #masked_count = np.ma.count_masked(work_data_cp, axis=1)
+    combined_mask = combined_mask[working_slice].reshape(new_shape)
+    masked_count = np.ma.sum(combined_mask, axis=1)
     stdevs = np.ma.std(work_data_cp, axis=1)
     overs = np.ma.min(work_data_cp, axis=1)
     ins = np.ma.mean(work_data_cp, axis=1)
@@ -127,11 +160,6 @@ def kill_peaks(work_wlen_cp, work_data_cp, peaks_mask, orig_mask, block_size, bl
     stdevs[masked_count > (block_size/3)] = 0
     x = np.arange(len(stdevs))
     mask = (stdevs == 0) & (overs == 0)
-
-    #begin_block_mask = begin_orig_mask // block_size
-    #end_block_mask = end_orig_mask // block_size
-    #mask[:begin_block_mask] = False
-    #mask[end_block_mask:] = False
 
     stdevs[mask] = np.interp(x[mask], x[~mask], stdevs[~mask])
     overs[mask] = np.interp(x[mask], x[~mask], overs[~mask])
@@ -148,13 +176,18 @@ def kill_peaks(work_wlen_cp, work_data_cp, peaks_mask, orig_mask, block_size, bl
         stdev_rows = np.where((stdevs > cutoff) | (masked_count > (block_size/3)))
         new_work_data[stdev_rows,:] = overs[stdev_rows,np.newaxis]
 
-        #if np.any(begin_block_mask == stdev_rows):
-        #    new_work_data[begin_block_mask] = ins[begin_block_mask]
-        #    new_work_data[begin_block_mask+1] = ins[begin_block_mask+1]
-
+    #print "new_work_data size:", new_work_data.size
     new_work_data = new_work_data.reshape((new_work_data.size,))
     new_work_data.mask = work_data_cp.mask
+    if block_diff:
+        #print "new_work_data size + block_diff:", new_work_data.size + block_diff
+        temp = np.ma.empty((new_work_data.size + block_diff, ), dtype=float)
+        #print "temp shape:", temp.shape
+        temp[0:new_work_data.size] = new_work_data
+        temp[new_work_data.size:] = leftovers
+        new_work_data = temp
 
+    #print "Final output shape:", new_work_data.shape
     return new_work_data
 
 def mark_time(idstr=None, last_time=None):

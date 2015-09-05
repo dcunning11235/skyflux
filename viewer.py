@@ -10,7 +10,7 @@ import os.path
 import bossdata.spec as bdspec
 from numpy.lib import recfunctions as rfn
 
-def plot_it(data, key, peaks_table=None):
+def plot_it(data, key, peaks_table=None, no_con_flux=False):
     data = Table(data, masked=True)
     if 'ivar' in data.colnames:
         data.mask = [(data['ivar'] == 0) | (np.abs(data['ivar']) <= 0.0001)]*len(data.columns)
@@ -26,14 +26,15 @@ def plot_it(data, key, peaks_table=None):
         sigma = 0
 
 
-    if 'con_flux' in data.colnames:
+    if 'con_flux' in data.colnames and not no_con_flux:
         val += data['con_flux']
 
         plt.plot(data[key], [0]*len(data[key]), color='red')
         plt.plot(data[key], data['con_flux'], color='green')
         plt.plot(data[key], val, color='orange', alpha=0.7)
     else:
-        plt.plot(data[key], val)
+        plt.plot(data[key], [0]*len(data[key]), color='red')
+        plt.plot(data[key], val, color='orange', alpha=0.7)
     if np.any(sigma > 0) and 'con_flux' not in data.colnames:
         plt.fill_between(data[key], val-sigma, val+sigma, color='red')
 
@@ -69,7 +70,7 @@ data_as_is = []
 for file in os.listdir(path):
     if fnmatch.fnmatch(file, pattern):
         data2 = Table.read(os.path.join(path, file), format="ascii")
-        #plot_it(data2, key)
+        plot_it(data2, key)
         data_as_is.append(data2)
 
         if data is None:
@@ -90,7 +91,7 @@ peaks_table = None
 if peaks is not None:
     peaks_table = Table.read(os.path.join(path, peaks), format="ascii")
 
-plot_it(result, key, peaks_table)
+plot_it(result, key, peaks_table, no_con_flux=False)
 
 '''
 if 'loglam' not in result.dtype.names:

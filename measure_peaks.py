@@ -75,8 +75,8 @@ total_dtype=[('total_type', object), ('source', object), ('wavelength_target', f
             ('wavelength_peak', float), ('peak_delta', float),
             ('peak_delta_over_width', float), ('total_flux', float), ('total_con_flux', float)]
 
-max_peak_width = 30
-peak_widths = np.array([3,10,20,max_peak_width])
+max_peak_width = 40
+peak_widths = np.array([3,7,15,30,max_peak_width])
 
 all_timing = False
 ts = time.time()
@@ -147,6 +147,8 @@ def find_and_measure_peaks(data, peak_flux_list=None, use_flux_con=True):
     peak_flux = Table(data=arr)
     ts = mark_time('create table', ts)
 
+    #save_data(peak_flux, 'pre_filter')
+
     peak_flux.remove_rows(np.abs(peak_flux['peak_delta']) > max_peak_width)
     peak_flux = filter_for_overlaps(peak_flux, ['index_lower_bound', 'index_upper_bound'])
     peak_flux = filter_for_overlaps(peak_flux, ['index_lower_bound'])
@@ -193,7 +195,7 @@ def real_find_peaks(data,cols=['flux']):
     if len(cols) > 1:
         for col_name in cols[1:]:
             val += data[col_name]
-    peak_inds = find_peaks_cwt(val, peak_widths, max_distances=peak_widths/2, noise_perc=5)
+    peak_inds = find_peaks_cwt(val, peak_widths, max_distances=peak_widths/2, noise_perc=8)
     peaks = []
     for ind in peak_inds:
         peaks.append(data['wavelength'][ind])
