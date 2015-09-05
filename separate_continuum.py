@@ -23,15 +23,6 @@ all_timing = False
 main_timing = False
 ts = time.time()
 
-# TBD: Old notes removed; need to write up new notes on this
-
-# Bugs, Issues:
-#  1.)  Fills all con_flux slots, even those that are masked; these should not be
-#       output to the csv file, even if they are used internally.  Low priority,
-#       the ivar value is what matters as far as masking goes.
-# 2.)  This used to be super-fast, now is super-slow.  Is it the cwt?  Is it the
-#       peak filtering? (probably)  Something else?
-
 def main():
     path = "."
     pattern = ""
