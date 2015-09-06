@@ -42,7 +42,7 @@ def load_spectra_data(path, target_type='continuum', filename=None):
     wavelengths = npz['wavelengths']
 
     npz.close()
-
+    print "Using", len(sources), "sources"
     return sources, mixing, exposures, wavelengths
 
 def load_observation_metadata(path, file = "annotated_metadata.csv"):
@@ -79,18 +79,19 @@ def main():
 
     obs_metadata = trim_observation_metadata(load_observation_metadata(metadata_path))
     #c_sources, c_mixing, c_exposures, nc_sources, nc_mixing, noncon_exposures = load_all_spectra_data(spectra_path)
-    c_sources, c_mixing, c_exposures, c_wavelengths = load_spectra_data(spectra_path) #, target_type='noncontinuum')
+    c_sources, c_mixing, c_exposures, c_wavelengths = load_spectra_data(spectra_path, target_type='noncontinuum')
     #nc_sources, nc_mixing, nc_exposures, nc_wavelengths = load_spectra_data(spectra_path, target_type='noncontinuum')
 
     reduced_obs_metadata = obs_metadata[np.in1d(obs_metadata['EXP_ID'], c_exposures)]
     reduced_obs_metadata.sort('EXP_ID')
     sorted_inds = np.argsort(c_exposures)
 
-    rfr = ensemble.RandomForestRegressor(n_estimators=150, min_samples_split=1, random_state=rfr_random_state)
-    mtencv = linear_model.MultiTaskElasticNetCV(copy_X=True, normalize=True, n_alphas=200, n_jobs=-1)
+    rfr = ensemble.RandomForestRegressor(n_estimators=150, min_samples_split=1,
+                        random_state=rfr_random_state, n_jobs=-1, verbose=True)
+    #mtencv = linear_model.MultiTaskElasticNetCV(copy_X=True, normalize=False, n_alphas=200, n_jobs=-1)
     #random_state=rfr_random_state, selection='random',
     #rnn = neighbors.RadiusNeighborsRegressor(weights='distance')
-    knn = neighbors.KNeighborsRegressor(weights='distance', n_neighbors=15)
+    knn = neighbors.KNeighborsRegressor(weights='distance', n_neighbors=1x5, p=128)
 
     reduced_obs_metadata.remove_column('EXP_ID')
     md_len = len(reduced_obs_metadata)
@@ -107,10 +108,10 @@ def main():
 
     print "Which is exposure:", c_exposures[sorted_inds[test_ind]]
 
-    ica = ICAize.unpickle_FastICA() #(target_type='noncontinuum')
+    ica = ICAize.unpickle_FastICA(target_type='noncontinuum')
 
     rfr.fit(X=train_X, y=train_y)
-    mtencv.fit(X=train_X, y=train_y)
+    #mtencv.fit(X=train_X, y=train_y)
     #rnn.fit(X=train_X, y=train_y)
     knn.fit(X=train_X, y=train_y)
 
@@ -125,8 +126,8 @@ def main():
             data = Table.read(os.path.join(spectra_path, file), format="ascii.csv")
             mask = data['ivar'] == 0
             data['con_flux'][mask] = np.interp(data['wavelength'][mask], data['wavelength'][~mask], data['con_flux'][~mask])
-            actual = data['con_flux']
-            #actual = data['flux']
+            #actual = data['con_flux']
+            actual = data['flux']
             delta = predicted_continuum[0] - actual
             plt.plot(c_wavelengths, actual)
             plt.plot(c_wavelengths, delta)
@@ -139,7 +140,7 @@ def main():
     plt.close()
 
 
-
+    '''
     prediction = mtencv.predict(test_X)
     predicted_continuum = ica.inverse_transform(prediction, copy=True)
 
@@ -154,7 +155,7 @@ def main():
     plt.title("MultiTask Elastic Net CV")
     plt.show()
     plt.close()
-
+    '''
 
 
     #np.seterr(all='raise')

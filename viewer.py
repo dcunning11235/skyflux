@@ -10,12 +10,13 @@ import os.path
 import bossdata.spec as bdspec
 from numpy.lib import recfunctions as rfn
 
-def plot_it(data, key, peaks_table=None, no_con_flux=False):
+def plot_it(data, key, peaks_table=None, no_con_flux=False, unmask=False):
     data = Table(data, masked=True)
-    if 'ivar' in data.colnames:
-        data.mask = [(data['ivar'] == 0) | (np.abs(data['ivar']) <= 0.0001)]*len(data.columns)
-    else:
-        data.mask = [(data['flux'] == 0)]*len(data.columns)
+    if not unmask:
+        if 'ivar' in data.colnames:
+            data.mask = [(data['ivar'] == 0) | (np.abs(data['ivar']) <= 0.0001)]*len(data.columns)
+        else:
+            data.mask = [(data['flux'] == 0)]*len(data.columns)
 
     val = data['flux']
     if 'sky' in data.colnames:
@@ -91,7 +92,7 @@ peaks_table = None
 if peaks is not None:
     peaks_table = Table.read(os.path.join(path, peaks), format="ascii")
 
-plot_it(result, key, peaks_table, no_con_flux=False)
+plot_it(result, key, peaks_table, no_con_flux=False, unmask=True)
 
 '''
 if 'loglam' not in result.dtype.names:
