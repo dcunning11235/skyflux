@@ -109,7 +109,7 @@ def main():
 
             save_data(peak_flux, idstr)
 
-def find_and_measure_peaks(data, peak_flux_list=None, use_flux_con=True):
+def find_and_measure_peaks(data, peak_flux_list=None, use_flux_con=True, ignore_defects=True):
     global ts
 
     arr = []
@@ -136,7 +136,8 @@ def find_and_measure_peaks(data, peak_flux_list=None, use_flux_con=True):
         if ~removed:
             #ts = mark_time()
             target_flux_totals = get_total_flux("UNKNOWN", data['wavelength'], data['flux'],
-                                None if not use_flux_con else data['con_flux'], candidate_peak)
+                                None if not use_flux_con else data['con_flux'], candidate_peak,
+                                ignore_defects=ignore_defects)
             #ts = mark_time('get_total_flux', ts)
             peak_flux_list.append(target_flux_totals)
     ts = mark_time('flux loop', ts)
@@ -201,7 +202,7 @@ def real_find_peaks(data,cols=['flux']):
         peaks.append(data['wavelength'][ind])
     return peaks, peak_inds
 
-def get_total_flux(label, wlen, flux, con_flux, target_wlens=None, wlen_spans=None):
+def get_total_flux(label, wlen, flux, con_flux, target_wlens=None, wlen_spans=None, ignore_defects=True):
     #old = np.seterr(all='raise')
 
     ret_len = 0
@@ -238,19 +239,20 @@ def get_total_flux(label, wlen, flux, con_flux, target_wlens=None, wlen_spans=No
                 ind += 1
                 continue
 
-            #Now, try to account for cases where peaks are jagged and we're stuck on a small dip
-            if (np.ma.min( flux[max(0, under_offset-(max_peak_width//2)):under_offset]) < (flux[under_offset] / 2)) and \
-                    (np.ma.max( flux[max(0, under_offset-(max_peak_width//2)):under_offset+1]) < np.ma.max(flux[under_offset:over_offset+1]) / 5):
-                #Start block
-                under_under_offset = np.ma.argmin( flux[max(0, under_offset-(max_peak_width//2)):under_offset+1])
-                new_under_offset = under_offset - ((max_peak_width//2)-under_under_offset)
-                under_offset = new_under_offset
-            if (np.ma.min( flux[over_offset+1:min(over_offset+(max_peak_width//2), len(wlen))]) < (flux[over_offset] / 2)) and \
-                    (np.ma.max( flux[over_offset+1:min(over_offset+(max_peak_width//2), len(wlen))]) < np.ma.max(flux[under_offset:over_offset+1]) / 5):
-                #Start block
-                over_over_offset = np.ma.argmin( flux[over_offset+1:min(over_offset+(max_peak_width//2), len(wlen))])
-                new_over_offset = over_offset + over_over_offset
-                over_offset = new_over_offset
+            if ignore_defects:
+                #Now, try to account for cases where peaks are jagged and we're stuck on a small dip
+                if (np.ma.min( flux[max(0, under_offset-(max_peak_width//2)):under_offset]) < (flux[under_offset] / 2)) and \
+                        (np.ma.max( flux[max(0, under_offset-(max_peak_width//2)):under_offset+1]) < np.ma.max(flux[under_offset:over_offset+1]) / 5):
+                    #Start block
+                    under_under_offset = np.ma.argmin( flux[max(0, under_offset-(max_peak_width//2)):under_offset+1])
+                    new_under_offset = under_offset - ((max_peak_width//2)-under_under_offset)
+                    under_offset = new_under_offset
+                if (np.ma.min( flux[over_offset+1:min(over_offset+(max_peak_width//2), len(wlen))]) < (flux[over_offset] / 2)) and \
+                        (np.ma.max( flux[over_offset+1:min(over_offset+(max_peak_width//2), len(wlen))]) < np.ma.max(flux[under_offset:over_offset+1]) / 5):
+                    #Start block
+                    over_over_offset = np.ma.argmin( flux[over_offset+1:min(over_offset+(max_peak_width//2), len(wlen))])
+                    new_over_offset = over_offset + over_over_offset
+                    over_offset = new_over_offset
 
             nonmasked_start = int(np.ma.notmasked_edges(flux[:under_offset+1])[1])
             nonmasked_end = int(np.ma.notmasked_edges(flux[over_offset:])[0])
