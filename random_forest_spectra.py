@@ -77,21 +77,23 @@ def main():
         spectra_path = sys.argv[2]
         test_ind = int(sys.argv[3])
 
+    target_type = 'continuum'
+
     obs_metadata = trim_observation_metadata(load_observation_metadata(metadata_path))
     #c_sources, c_mixing, c_exposures, nc_sources, nc_mixing, noncon_exposures = load_all_spectra_data(spectra_path)
-    c_sources, c_mixing, c_exposures, c_wavelengths = load_spectra_data(spectra_path, target_type='noncontinuum')
+    c_sources, c_mixing, c_exposures, c_wavelengths = load_spectra_data(spectra_path, target_type=target_type)
     #nc_sources, nc_mixing, nc_exposures, nc_wavelengths = load_spectra_data(spectra_path, target_type='noncontinuum')
 
     reduced_obs_metadata = obs_metadata[np.in1d(obs_metadata['EXP_ID'], c_exposures)]
     reduced_obs_metadata.sort('EXP_ID')
     sorted_inds = np.argsort(c_exposures)
 
-    rfr = ensemble.RandomForestRegressor(n_estimators=150, min_samples_split=1,
+    rfr = ensemble.RandomForestRegressor(n_estimators=200, min_samples_split=1,
                         random_state=rfr_random_state, n_jobs=-1, verbose=True)
     #mtencv = linear_model.MultiTaskElasticNetCV(copy_X=True, normalize=False, n_alphas=200, n_jobs=-1)
     #random_state=rfr_random_state, selection='random',
     #rnn = neighbors.RadiusNeighborsRegressor(weights='distance')
-    knn = neighbors.KNeighborsRegressor(weights='distance', n_neighbors=1x5, p=128)
+    knn = neighbors.KNeighborsRegressor(weights='distance', n_neighbors=10, p=64)
 
     reduced_obs_metadata.remove_column('EXP_ID')
     md_len = len(reduced_obs_metadata)
@@ -108,7 +110,7 @@ def main():
 
     print "Which is exposure:", c_exposures[sorted_inds[test_ind]]
 
-    ica = ICAize.unpickle_FastICA(target_type='noncontinuum')
+    ica = ICAize.unpickle_FastICA(target_type=target_type)
 
     rfr.fit(X=train_X, y=train_y)
     #mtencv.fit(X=train_X, y=train_y)
@@ -126,8 +128,11 @@ def main():
             data = Table.read(os.path.join(spectra_path, file), format="ascii.csv")
             mask = data['ivar'] == 0
             data['con_flux'][mask] = np.interp(data['wavelength'][mask], data['wavelength'][~mask], data['con_flux'][~mask])
-            #actual = data['con_flux']
+
             actual = data['flux']
+            if target_type == 'continuum':
+                actual = data['con_flux']
+
             delta = predicted_continuum[0] - actual
             plt.plot(c_wavelengths, actual)
             plt.plot(c_wavelengths, delta)

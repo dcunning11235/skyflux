@@ -9,15 +9,18 @@ import os.path
 import sys
 import time
 
+import matplotlib.pyplot as plt
+
+
 import stack
 import measure_peaks
 
 # Magic numbers.... oooohhhhhhhh!
 block_sizes = np.array([1,2])
-base_stds = np.array([0.5,0.25])
-noisy_cutoffs = np.array([1.75])
-noisy_sizes = np.array([25])
-split_noisy_app = 2650
+base_stds = np.array([0.5,0.5])
+noisy_cutoffs = np.array([3.5])
+noisy_sizes = np.array([15])
+split_noisy_app = 2650 # = 6084.01 A
 
 all_timing = False
 main_timing = False
@@ -45,6 +48,14 @@ def main():
             peaks = measure_peaks.find_and_measure_peaks(data, use_flux_con=False, ignore_defects=False)
             ts = mark_time("measure_peaks.find_and_measure_peaks", ts)
             peaks_mask = measure_peaks.mask_known_peaks(data, peaks)
+
+            '''
+            test_data = data.copy()
+            test_data.mask = np.ma.nomask
+            test_data.mask = [peaks_mask]*len(data.columns)
+            peaks = measure_peaks.find_and_measure_peaks(test_data, use_flux_con=False, ignore_defects=False)
+            '''
+
             #peaks_mask = np.zeros((7080,), dtype=bool)
             ts = mark_time("measure_peaks.mask_known_peaks", ts)
             data.mask = [orig_mask]*len(data.columns)
@@ -54,16 +65,20 @@ def main():
                                         idstr=idstr, block_sizes=block_sizes)
             end_continuum, end_wo_continuum = split_spectrum(data['wavelength'][split_noisy_app:], data['flux'][split_noisy_app:],
                                         peaks_mask[split_noisy_app:], orig_mask[split_noisy_app:],
-                                        idstr=idstr, block_sizes=block_sizes, mult=4)
+                                        idstr=idstr, block_sizes=block_sizes, mult=6)
             ts = mark_time("smoothing", ts)
 
             wo_continuum = np.ma.concatenate([start_wo_continuum, end_wo_continuum])
             continuum = np.ma.concatenate([start_continuum, end_continuum])
 
+            #continuum, wo_continuum = tamp_down(continuum, wo_continuum, span=51)
             continuum, wo_continuum = tamp_down(continuum, wo_continuum)
             continuum, wo_continuum = tamp_down(continuum, wo_continuum, span=31)
+            #continuum, wo_continuum = tamp_down(continuum, wo_continuum, span=31)
             continuum, wo_continuum = tamp_down(continuum, wo_continuum, span=21)
+            #continuum, wo_continuum = tamp_down(continuum, wo_continuum, span=11)
 
+            # Do not smooth
             #continuum, wo_continuum = smooth(continuum, wo_continuum)
 
             save_data(data['wavelength'], wo_continuum, continuum, data['ivar'], orig_mask, idstr)
@@ -127,9 +142,23 @@ def split_spectrum(work_wlen, work_data, peaks_mask, orig_mask, block_sizes, ids
     work_data_cp = np.ma.mean( [kill_peaks(work_wlen_cp, work_data_cp, peaks_mask, orig_mask, block,
                                     cutoff=cutoff, is_noisy=True) for block, cutoff in
                                     zip(noisy_sizes*mult, noisy_cutoffs/mult)], axis=0 )
+    '''
+    plt.plot(work_wlen, work_data_cp)
+    plt.tight_layout()
+    plt.show()
+    plt.close()
+    '''
+
     work_data_cp = np.ma.mean( [kill_peaks(work_wlen_cp, work_data_cp, peaks_mask, orig_mask,
                                     block, cutoff=cutoff) for block, cutoff in
                                     zip(block_sizes, base_stds)], axis=0 )
+    '''
+    plt.plot(work_wlen, work_data_cp)
+    plt.tight_layout()
+    plt.show()
+    plt.close()
+    '''
+    
     cont_flux = work_data_cp
     return cont_flux, work_data-cont_flux
 
@@ -187,7 +216,7 @@ def kill_peaks(work_wlen_cp, work_data_cp, peaks_mask, orig_mask, block_size, cu
     overs = np.ma.min(work_data_cut, axis=1)
     ins = np.ma.mean(work_data_cut, axis=1)
 
-    stdevs[masked_count > (block_size/3)] = 0
+    #stdevs[masked_count > (block_size * 0.90)] = 0
     x = np.arange(len(stdevs))
     mask = (stdevs == 0) & (overs == 0)
 

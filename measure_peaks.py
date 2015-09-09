@@ -7,6 +7,12 @@ from astropy.utils.compat import argparse
 
 import scipy.integrate as intg
 from scipy.signal import find_peaks_cwt
+from scipy.signal import general_gaussian
+from scipy.signal import gaussian
+from scipy.signal import fftconvolve
+from scipy.signal import argrelextrema
+
+import matplotlib.pyplot as plt
 
 import fnmatch
 import os
@@ -75,8 +81,10 @@ total_dtype=[('total_type', object), ('source', object), ('wavelength_target', f
             ('wavelength_peak', float), ('peak_delta', float),
             ('peak_delta_over_width', float), ('total_flux', float), ('total_con_flux', float)]
 
-max_peak_width = 40
-peak_widths = np.array([3,7,15,30,max_peak_width])
+max_peak_width = 24
+peak_widths_1 = np.array([2,4,6])
+peak_widths_2 = np.array([5,9,13])
+peak_widths_3 = np.array([14,19,max_peak_width])
 
 all_timing = False
 ts = time.time()
@@ -109,23 +117,31 @@ def main():
 
             save_data(peak_flux, idstr)
 
-def find_and_measure_peaks(data, peak_flux_list=None, use_flux_con=True, ignore_defects=True):
+def find_and_measure_peaks(data, peak_flux_list=None, use_flux_con=True, ignore_defects=True,
+                            window_size=11,sigma=5,p=0.5,percentile=10):
     global ts
 
-    arr = []
     if peak_flux_list is None:
         peak_flux_list = []
 
     ts = mark_time()
-    found_peaks, found_inds = real_find_peaks(data)
+    found_peaks, found_inds = real_find_peaks(data,window_size=window_size,p=p,sigma=sigma,percentile=percentile)
     ts = mark_time('real_find_peaks', ts)
     removed = False
 
+    min_wavelength = np.ma.min(data['wavelength'])
+    max_wavelength = np.ma.max(data['wavelength'])
+
+    #print found_peaks
+    #print found_inds
     for candidate_peak, candidate_ind in zip(found_peaks, found_inds):
         removed = False
         if candidate_peak is np.ma.masked:
             continue
-        for peak in arr:
+        if candidate_peak > max_wavelength or candidate_peak < min_wavelength:
+            continue
+
+        for peak in peak_flux_list:
             if (candidate_peak > peak['wavelength_lower_bound'] and
                     candidate_peak < peak['wavelength_upper_bound']  and
                     np.abs(candidate_ind - peak['index_lower_bound']) >= max_peak_width and
@@ -133,6 +149,7 @@ def find_and_measure_peaks(data, peak_flux_list=None, use_flux_con=True, ignore_
                 #found_peaks.remove(peak)
                 removed=True
                 break
+
         if ~removed:
             #ts = mark_time()
             target_flux_totals = get_total_flux("UNKNOWN", data['wavelength'], data['flux'],
@@ -191,16 +208,46 @@ def mask_known_peaks(data, peaks):
 
     return peaks_mask
 
-def real_find_peaks(data,cols=['flux']):
+def real_find_peaks(data,cols=['flux'], window_size=15,sigma=7,p=0.5, percentile=10):
     val = data[cols[0]]
     if len(cols) > 1:
         for col_name in cols[1:]:
             val += data[col_name]
-    peak_inds = find_peaks_cwt(val, peak_widths, max_distances=peak_widths/2, noise_perc=8)
+    '''
+    peak_inds_1 = find_peaks_cwt(val, peak_widths_1, max_distances=peak_widths_1/0.5, noise_perc=8)
+    peak_inds_2 = find_peaks_cwt(val, peak_widths_2, max_distances=peak_widths_2/0.5, noise_perc=9)
+    peak_inds_3 = find_peaks_cwt(val, peak_widths_3, max_distances=peak_widths_3/0.5, noise_perc=10)
+    peak_inds = np.concatenate([peak_inds_1, peak_inds_2, peak_inds_3])
     peaks = []
     for ind in peak_inds:
         peaks.append(data['wavelength'][ind])
-    return peaks, peak_inds
+    '''
+    '''
+    plt.plot(data['wavelength'], val)
+    '''
+
+    #window = general_gaussian(window_size, p=p, sig=sigma, sym=True)
+    window = gaussian(window_size, std=sigma, sym=True)
+    filtered = val.copy()
+    cutoff = np.percentile(filtered,percentile)
+    if np.any(filtered.mask) and np.any(~filtered.mask):
+        filtered[filtered.mask] = np.interp(data['wavelength'][filtered.mask], data['wavelength'][~filtered.mask], filtered[~filtered.mask])
+    filtered = fftconvolve(window, filtered)
+    filtered = (np.ma.average(val) / np.ma.average(filtered)) * filtered
+    filtered = np.roll(filtered, -(window_size-1)/2)
+    filtered_peak_inds = np.array(argrelextrema(filtered[:-(window_size-1)], np.ma.greater))
+    filtered_peak_inds = filtered_peak_inds[np.where(val[filtered_peak_inds] > cutoff)]
+    filtered_peak_wlens = (filtered_peak_inds*0.975)+3500.26
+
+    '''
+    plt.scatter(filtered_peak_wlens, data['flux'][filtered_peak_inds])
+    plt.tight_layout()
+    plt.show()
+    plt.close()
+    '''
+
+    #return peaks, peak_inds
+    return filtered_peak_wlens, filtered_peak_inds
 
 def get_total_flux(label, wlen, flux, con_flux, target_wlens=None, wlen_spans=None, ignore_defects=True):
     #old = np.seterr(all='raise')
@@ -218,6 +265,8 @@ def get_total_flux(label, wlen, flux, con_flux, target_wlens=None, wlen_spans=No
     if target_wlens is not None:
         for target in target_wlens:
             offset = stack.get_stacked_fiducial_wlen_pixel_offset(target)
+            if offset < 0 or offset >= 7080:
+                print offset, target
             offset_val = flux[offset]
             under_offset = over_offset = offset
             peak = False
