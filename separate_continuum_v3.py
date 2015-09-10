@@ -8,8 +8,12 @@ from scipy.signal import general_gaussian
 from scipy.signal import gaussian
 from scipy.signal import fftconvolve
 from scipy.signal import argrelextrema
+from scipy.signal import savgol_filter
 from scipy.interpolate import InterpolatedUnivariateSpline
 from scipy.interpolate import interp1d
+
+from scipy.signal import find_peaks_cwt, cwt
+from scipy.signal import ricker, daub
 
 import fnmatch
 import os
@@ -28,11 +32,14 @@ base_stds = np.array([0.5,0.5])
 noisy_cutoffs = np.array([3.5])
 noisy_sizes = np.array([6])
 noisy_mult = np.array([15])
-split_noisy_app = 7080 #2650 # = 6084.01 A
+split_noisy_app = 2700 #2650 # = 6084.01 A
 
 all_timing = False
 main_timing = False
 ts = time.time()
+
+use_gs_over_gaussian = False
+use_gs_over_gaussian_2 = False
 
 def main():
     path = "."
@@ -54,68 +61,128 @@ def main():
 
             test_data = data.copy()
 
-            test_data['flux'] = minimize(test_data['wavelength'], test_data['flux'], 100, 0, start_ind=2650)
+            test_data['flux'] = minimize(test_data['wavelength'], test_data['flux'], 100, 0, start_ind=split_noisy_app)
 
-            window_size = 151
-            sigma=24
-            #window = general_gaussian(window_size, p=0.5, sig=sigma, sym=True)
-            window = gaussian(window_size, std=sigma, sym=True) +  gaussian(window_size, std=sigma*4, sym=True)
-            filtered = test_data['flux'].copy()
-            wavelength = test_data['wavelength'].data
-            mask = filtered.mask.copy()
-            if np.any(filtered.mask) and np.any(~filtered.mask):
-                filtered[mask] = np.interp(wavelength[mask], wavelength[~mask], filtered[~mask])
-            filtered = fftconvolve(window, filtered)
-            filtered = (np.ma.average(test_data['flux']) / np.ma.average(filtered)) * filtered
-            print test_data['wavelength'].shape, filtered.shape
-            filtered = np.roll(filtered, -(window_size-1)/2)[:-(window_size-1)]
+            #daub_wavelet = daub(1)
+            #ricker_wavelet = ricker(25,5)
 
+            widths = np.array([3, 7, 30])
+
+            peak_inds = np.array(find_peaks_cwt(test_data['flux'], widths, min_length=len(widths), max_distances=widths))
+
+            #res = cwt(test_data['flux'], ricker, widths)
+            #print res.shape
             plt.plot(test_data['wavelength'], test_data['flux'])
-            print test_data['wavelength'].shape, filtered.shape
-            plt.plot(test_data['wavelength'], filtered)
-            plt.title("Gaussian Convolve 151, 24, --")
+            #for i, width in enumerate(widths):
+            #    plt.plot(test_data['wavelength'], res[i])
+            plt.scatter(test_data['wavelength'][peak_inds], test_data['flux'][peak_inds])
+            plt.title("ricker Wavelet, widths={}".format(widths))
             plt.tight_layout()
             plt.show()
             plt.close()
 
-            test_data['flux'] = np.ma.min(np.ma.vstack([test_data['flux'], filtered]), axis=0)
+            peak_inds = np.concatenate((peak_inds, peak_inds-1, peak_inds-2, peak_inds-3, peak_inds+1, peak_inds+2, peak_inds+3))
+            test_data.mask[peak_inds] = True
             plt.plot(test_data['wavelength'], test_data['flux'])
-            plt.title("Min'ed w/ Gaussian Convolve 151, 24, --")
-            plt.tight_layout()
-            plt.show()
-            plt.close()
-
-
-
-            window_size = 121
-            sigma=18
-            window = gaussian(window_size, std=sigma, sym=True) +  gaussian(window_size, std=sigma*4, sym=True)
-            filtered = test_data['flux'].copy()
-            wavelength = test_data['wavelength'].data
-            mask = filtered.mask.copy()
-            if np.any(filtered.mask) and np.any(~filtered.mask):
-                filtered[mask] = np.interp(wavelength[mask], wavelength[~mask], filtered[~mask])
-            filtered = fftconvolve(window, filtered)
-            filtered = (np.ma.average(test_data['flux']) / np.ma.average(filtered)) * filtered
-            print test_data['wavelength'].shape, filtered.shape
-            filtered = np.roll(filtered, -(window_size-1)/2)[:-(window_size-1)]
-
-            plt.plot(test_data['wavelength'], test_data['flux'])
-            print test_data['wavelength'].shape, filtered.shape
-            plt.plot(test_data['wavelength'], filtered)
-            plt.title("Gaussian Convolve 121, 24, --")
-            plt.tight_layout()
-            plt.show()
-            plt.close()
-
-            test_data['flux'] = np.ma.min(np.ma.vstack([test_data['flux'], filtered]), axis=0)
-            plt.plot(test_data['wavelength'], test_data['flux'])
-            plt.title("Min'ed w/ Gaussian Convolve 121, 24, --")
+            #for i, width in enumerate(widths):
+            #    plt.plot(test_data['wavelength'], res[i])
+            plt.scatter(test_data['wavelength'][peak_inds], test_data['flux'][peak_inds])
+            plt.title("ricker Wavelet, widths={}".format(widths))
             plt.tight_layout()
             plt.show()
             plt.close()
 
 
+
+            if use_gs_over_gaussian:
+                smoothed = savgol_filter(test_data['flux'], 201, 6)
+
+                plt.plot(test_data['wavelength'], test_data['flux'])
+                plt.plot(test_data['wavelength'], smoothed)
+                plt.title("Savitzky-Golay Filter 201, 6")
+                plt.tight_layout()
+                plt.show()
+                plt.close()
+
+                test_data['flux'] = np.ma.min(np.ma.vstack([test_data['flux'], smoothed]), axis=0)
+                plt.plot(test_data['wavelength'], test_data['flux'])
+                plt.title("Min'ed w/ Savitzky-Golay 201, 6")
+                plt.tight_layout()
+                plt.show()
+                plt.close()
+            else:
+                window_size = 201
+                sigma=24
+                window = general_gaussian(window_size, p=2.5, sig=sigma, sym=True) + general_gaussian(window_size, p=0.5, sig=sigma*4, sym=True)
+                #window = gaussian(window_size, std=sigma, sym=True) +  gaussian(window_size, std=sigma*4, sym=True)
+                filtered = test_data['flux'].copy()
+                wavelength = test_data['wavelength']
+                mask = filtered.mask.copy()
+                if np.any(filtered.mask) and np.any(~filtered.mask):
+                    filtered[mask] = np.interp(wavelength[mask], wavelength[~mask], filtered[~mask])
+                filtered = fftconvolve(window, filtered)
+                filtered = (np.ma.average(test_data['flux']) / np.ma.average(filtered)) * filtered
+                print test_data['wavelength'].shape, filtered.shape
+                filtered = np.roll(filtered, -(window_size-1)/2)[:-(window_size-1)]
+
+                plt.plot(test_data['wavelength'], test_data['flux'])
+                plt.plot(test_data['wavelength'], filtered)
+                plt.title("Gaussian Convolve 201, 24, --")
+                plt.tight_layout()
+                plt.show()
+                plt.close()
+
+                test_data['flux'] = np.ma.min(np.ma.vstack([test_data['flux'], filtered]), axis=0)
+                plt.plot(test_data['wavelength'], test_data['flux'])
+                plt.title("Min'ed w/ Gaussian Convolve 151, 24, --")
+                plt.tight_layout()
+                plt.show()
+                plt.close()
+
+
+
+            if use_gs_over_gaussian or use_gs_over_gaussian_2:
+                smoothed = savgol_filter(test_data['flux'], 161, 4)
+                plt.plot(test_data['wavelength'], test_data['flux'])
+                plt.plot(test_data['wavelength'], smoothed)
+                plt.title("Savitzky-Golay Filter 161, 4")
+                plt.tight_layout()
+                plt.show()
+                plt.close()
+
+                test_data['flux'] = np.ma.min(np.ma.vstack([test_data['flux'], smoothed]), axis=0)
+                plt.plot(test_data['wavelength'], test_data['flux'])
+                plt.title("Min'ed w/ Savitzky-Golay Filter 161, 4")
+                plt.tight_layout()
+                plt.show()
+                plt.close()
+            else:
+                window_size = 161
+                sigma=18
+                window = general_gaussian(window_size, p=2.5, sig=sigma, sym=True) +  general_gaussian(window_size, p=2.5, sig=sigma*4, sym=True)
+                #window = gaussian(window_size, std=sigma, sym=True) +  gaussian(window_size, std=sigma*4, sym=True)
+                filtered = test_data['flux'].copy()
+                wavelength = test_data['wavelength']
+                mask = filtered.mask.copy()
+                if np.any(filtered.mask) and np.any(~filtered.mask):
+                    filtered[mask] = np.interp(wavelength[mask], wavelength[~mask], filtered[~mask])
+                filtered = fftconvolve(window, filtered)
+                filtered = (np.ma.average(test_data['flux']) / np.ma.average(filtered)) * filtered
+                filtered = np.roll(filtered, -(window_size-1)/2)[:-(window_size-1)]
+
+                plt.plot(test_data['wavelength'], test_data['flux'])
+                plt.plot(test_data['wavelength'], filtered)
+                plt.title("Gaussian Convolve 161, 18, --")
+                plt.tight_layout()
+                plt.show()
+                plt.close()
+
+                test_data['flux'] = np.ma.min(np.ma.vstack([test_data['flux'], filtered]), axis=0)
+                plt.plot(test_data['wavelength'], test_data['flux'])
+                plt.title("Min'ed w/ Gaussian Convolve 161, 18, --")
+                plt.tight_layout()
+                plt.show()
+                plt.close()
 
             continuum = split_spectrum(test_data['wavelength'], test_data['flux'])
             wo_continuum = data['flux'] - continuum
@@ -243,7 +310,7 @@ def split_spectrum(work_wlen, work_data):
 
     mask = work_data.mask.copy()
 
-    window_size = 61
+    window_size = 161
     sigma=12
     #window = general_gaussian(window_size, p=0.5, sig=sigma, sym=True)
     window = gaussian(window_size, std=sigma, sym=True)
