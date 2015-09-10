@@ -61,8 +61,9 @@ def main():
 
             test_data = data.copy()
 
-            test_data['flux'] = minimize(test_data['wavelength'], test_data['flux'], 100, 0, start_ind=split_noisy_app)
+            test_data['flux'] = minimize(test_data['wavelength'], test_data['flux'], [100, 200, 300], 0, start_ind=split_noisy_app)
 
+            '''
             #daub_wavelet = daub(1)
             #ricker_wavelet = ricker(25,5)
 
@@ -91,8 +92,7 @@ def main():
             plt.tight_layout()
             plt.show()
             plt.close()
-
-
+            '''
 
             if use_gs_over_gaussian:
                 smoothed = savgol_filter(test_data['flux'], 201, 6)
@@ -187,64 +187,8 @@ def main():
             continuum = split_spectrum(test_data['wavelength'], test_data['flux'])
             wo_continuum = data['flux'] - continuum
 
-            #continuum, wo_continuum = tamp_down(data['wavelength'], continuum, wo_continuum, span=51)
-            #continuum, wo_continuum = tamp_down(data['wavelength'], continuum.data, wo_continuum.data)
-            #continuum, wo_continuum = tamp_down(data['wavelength'], continuum, wo_continuum, span=31)
-            #continuum, wo_continuum = tamp_down(data['wavelength'], continuum, wo_continuum, span=21)
-            #continuum, wo_continuum = tamp_down(data['wavelength'], continuum, wo_continuum, span=11)
-
-            #continuum, wo_continuum = smooth(continuum, wo_continuum)
-
             save_data(data['wavelength'], wo_continuum, continuum, data['ivar'], orig_mask, idstr)
             ts = mark_time("save_data", ts)
-
-def tamp_down(wavelength, continuum, wo_continuum, span=41):
-    work_continuum = np.ma.array(continuum)
-    work_wo_continuum = np.ma.array(wo_continuum)
-    total = work_wo_continuum + work_continuum
-
-    chunked_continuum, begin_orig_mask, end_orig_mask = trim_array_from_mask(work_continuum, work_continuum.mask, buffer=5)
-    chunked_continuum, block_diff, block_remainder = chunk_array(chunked_continuum, begin_orig_mask,
-                                                        end_orig_mask, span*3)
-    chunked_continuum[:] = np.ma.mean(chunked_continuum, axis=1)[:, np.newaxis]
-    chunked_continuum = chunked_continuum.reshape((chunked_continuum.size, ) )
-
-    averages = np.zeros(continuum.size, dtype=float)
-    averages[begin_orig_mask:end_orig_mask+1] = chunked_continuum[:-block_diff] if block_remainder > 0 else chunked_continuum
-
-    def _moving_average(a, n=3):
-        ret = np.cumsum(a, dtype=float)
-        ret[n:] = ret[n:] - ret[:-n]
-        ret = np.ma.concatenate([a[:(n-1)/2], ret[n-1:]/n, a[-(n-1)/2:]])
-        return ret
-
-    move_avg_cont = _moving_average(work_continuum, n=span)
-    too_loo_mask = move_avg_cont < averages
-
-    move_avg_cont -= work_continuum
-    move_avg_cont[move_avg_cont > 0] = 0
-    move_avg_cont[too_loo_mask] = 0
-
-    work_continuum += move_avg_cont
-    work_wo_continuum = total - work_continuum
-
-    plt.plot(wavelength, continuum)
-    plt.title("Tamping with span={}".format(span))
-    plt.tight_layout()
-    plt.show()
-    plt.close()
-
-    return work_continuum, work_wo_continuum
-
-def smooth(continuum, wo_continuum):
-    total = wo_continuum + continuum
-
-    g = Gaussian1DKernel(stddev=2)
-    continuum = convolve(continuum, g, boundary='extend')
-
-    wo_continuum = total - continuum
-
-    return continuum, wo_continuum
 
 def save_data(wlen, flux, con_flux, ivar, mask, idstr):
     wlen.mask = np.ma.nomask
@@ -255,54 +199,60 @@ def save_data(wlen, flux, con_flux, ivar, mask, idstr):
     continuum_table = Table([wlen.data, flux.filled(0), con_flux.filled(0), ivar.filled(0)], names=["wavelength", "flux", "con_flux", "ivar"])
     continuum_table.write("{}-continuum.csv".format(idstr), format="ascii.csv")
 
-def minimize(work_wlen, work_data, block_size, noise_cutoff, start_ind=0):
-    working_mask = work_data.mask.copy()
-    working_mask[:start_ind] = True
-    unmasked_inds = np.where(working_mask == False)
-    first_ind = np.min(unmasked_inds)
-    last_ind = np.max(unmasked_inds)
-    working_block = work_data[first_ind:last_ind+1]
+def minimize(work_wlen, work_data, block_sizes, noise_cutoff, start_ind=0):
+    def _minimize_run(work_wlen, work_data, block_size, noise_cutoff, start_ind=0):
+        working_mask = work_data.mask.copy()
+        working_mask[:start_ind] = True
+        unmasked_inds = np.where(working_mask == False)
+        first_ind = np.min(unmasked_inds)
+        last_ind = np.max(unmasked_inds)
+        working_block = work_data[first_ind:last_ind+1]
 
-    work_len = last_ind + 1 - first_ind
-    len_overage = work_len % block_size
-    extent_size = 0
-    if len_overage > 0:
-        extent_size = block_size - len_overage
-        working_block = np.ma.concatenate((working_block, working_block[-extent_size:]))
+        work_len = last_ind + 1 - first_ind
+        len_overage = work_len % block_size
+        extent_size = 0
+        if len_overage > 0:
+            extent_size = block_size - len_overage
+            working_block = np.ma.concatenate((working_block, working_block[-extent_size:]))
 
-    working_block = working_block.reshape((-1,block_size))
-    stds = None
-    if noise_cutoff > 0:
-        stds = np.ma.std(working_block, axis=1)
-    mins = np.ma.min(working_block.data, axis=1)
-    masks = np.ma.count_masked(working_block, axis=1)
+        working_block = working_block.reshape((-1,block_size))
+        stds = None
+        if noise_cutoff > 0:
+            stds = np.ma.std(working_block, axis=1)
+        mins = np.ma.min(working_block.data, axis=1)
+        masks = np.ma.count_masked(working_block, axis=1)
 
-    mins[masks > block_size/5] = 0
-    if noise_cutoff > 0:
-        stds[masks > block_size/5] = 0
+        mins[masks > block_size/5] = 0
+        if noise_cutoff > 0:
+            stds[masks > block_size/5] = 0
 
-    if noise_cutoff > 0:
-        min_mask = (stds > noise_cutoff) | (stds == 0)
-    else:
-        min_mask = np.ones((mins.size,), dtype=bool)
-    working_block[min_mask, :] =  mins[min_mask,np.newaxis]
-    working_block = working_block.reshape((working_block.size,))
-    if extent_size > 0:
-        working_block = working_block[:-extent_size]
+        if noise_cutoff > 0:
+            min_mask = (stds > noise_cutoff) | (stds == 0)
+        else:
+            min_mask = np.ones((mins.size,), dtype=bool)
+        working_block[min_mask, :] =  mins[min_mask,np.newaxis]
+        working_block = working_block.reshape((working_block.size,))
+        if extent_size > 0:
+            working_block = working_block[:-extent_size]
 
-    temp_block = work_data.copy()
-    temp_block[first_ind:last_ind+1] = working_block[:]
-    working_block = temp_block
-    print work_wlen.shape, working_block.shape
+        temp_block = work_data.copy()
+        temp_block[first_ind:last_ind+1] = working_block[:]
+        working_block = temp_block
+        print work_wlen.shape, working_block.shape
 
-    plt.plot(work_wlen, working_block)
-    plt.title("Minimized with span={}".format(block_size))
-    plt.tight_layout()
-    plt.show()
-    plt.close()
+        plt.plot(work_wlen, working_block)
+        plt.title("Minimized with span={}".format(block_size))
+        plt.tight_layout()
+        plt.show()
+        plt.close()
 
-    return working_block
+        return working_block
 
+    runs = []
+    for block_size in block_sizes:
+        runs.append(_minimize_run(work_wlen, work_data, block_size, noise_cutoff, start_ind))
+
+    return np.ma.mean(runs, axis=0)
 
 def split_spectrum(work_wlen, work_data):
     work_wlen_cp = work_wlen.copy()
