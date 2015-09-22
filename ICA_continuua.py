@@ -75,20 +75,20 @@ def main():
 
     print "Continuum Sky Flux"
     print "----------------------"
-    con_perf_table = var_test_ica(con_flux_arr, con_exposure_list, con_wavelengths, low_n=10,
-                hi_n=250, n_step=5, real_time_progress=True, idstr="continuum")
+    con_perf_table = var_test_ica(con_flux_arr, con_exposure_list, con_wavelengths, low_n=25,
+                hi_n=205, n_step=10, real_time_progress=True, idstr="continuum")
     con_perf_table.write("ica_performance_continuum.csv", format="ascii.csv")
 
     print "Non-continuum Sky Flux"
     print "----------------------"
-    noncon_perf_table = var_test_ica(flux_arr, exposure_list, wavelengths, low_n=10, hi_n=250,
-                n_step=5, real_time_progress=True, idstr="noncontinuum")
+    noncon_perf_table = var_test_ica(flux_arr, exposure_list, wavelengths, low_n=25, hi_n=205,
+                n_step=10, real_time_progress=True, idstr="noncontinuum")
     noncon_perf_table.write("ica_performance_noncontinuum.csv", format="ascii.csv")
+
 
 def var_test_ica(flux_arr_orig, exposure_list, wavelengths, low_n=3, hi_n=100, n_step=1, show_plots=False,
                     show_summary_plot=False, save_summary_plot=True, test_ind=7, real_time_progress=False,
                     idstr=None):
-
     start_ind = np.min(np.nonzero(flux_arr_orig[test_ind]))
     end_ind = np.max(np.nonzero(flux_arr_orig[test_ind]))
 
