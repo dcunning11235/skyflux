@@ -30,7 +30,7 @@ import ICAize
 
 ica_max_iter=750
 random_state=1234975
-n_iter_search = 500
+n_iter_search = 1000
 
 def main():
     path = "."
@@ -41,10 +41,11 @@ def main():
                 ])
 
     param_grid = {
-        "ica__n_components": sp_randint(25, 150),
-        "rfr__n_estimators": sp_randint(50, 300),
-        "rfr__min_samples_split": sp_randint(1, 5),
-        "rfr__max_features": [None, "log2", "sqrt"]
+        "ica__n_components": sp_randint(15, 200),
+        "rfr__n_estimators": sp_randint(25, 400),
+        "rfr__min_samples_split": sp_randint(1, 10)
+        #,
+        #"rfr__max_features": [None, "log2", "sqrt"]
     }
 
     randsearch = RandomizedSearchCV(rfr, param_grid, n_iter = n_iter_search)

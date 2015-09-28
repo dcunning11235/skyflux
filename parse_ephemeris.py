@@ -9,8 +9,6 @@ import numpy as np
 import datetime as dt
 import sys
 
-import bossdata.meta as bdmt
-
 '''
 Solar and Lunar ephermeris data from JPL Horizons
 Common options:

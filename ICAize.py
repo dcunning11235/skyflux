@@ -32,10 +32,31 @@ def main():
     if len(sys.argv) == 3:
         mixing_matrix_path = sys.argv[2]
 
-    con_flux_arr, con_exposure_arr, con_wavelengths = load_all_in_dir(path,
+    con_flux_arr, con_exposure_arr, con_masks, con_wavelengths = load_all_in_dir(path,
                                                     use_con_flux=True, recombine_flux=False)
-    flux_arr, exposure_arr, wavelengths = load_all_in_dir(path, use_con_flux=False,
+    flux_arr, exposure_arr, masks, wavelengths = load_all_in_dir(path, use_con_flux=False,
                                                     recombine_flux=False)
+
+    #mask_summed = (0 == np.sum(masks, axis=0))
+    con_mean = np.mean(con_flux_arr, axis=0)
+
+    min_val_ind = np.min(np.where(con_mean != 0))
+    max_val_ind = np.max(np.where(con_mean != 0))
+    print min_val_ind, max_val_ind
+
+    for i in range(con_flux_arr.shape[0]):
+        curr_min_val_ind = np.min(np.where(con_flux_arr[i,:] != 0))
+        curr_max_val_ind = np.max(np.where(con_flux_arr[i,:] != 0))
+        print curr_min_val_ind, curr_max_val_ind,
+
+        print (min_val_ind, curr_min_val_ind),
+        con_flux_arr[i,min_val_ind:curr_min_val_ind] = con_mean[min_val_ind:curr_min_val_ind]
+        print (curr_max_val_ind+1, max_val_ind+1),
+        con_flux_arr[i,curr_max_val_ind+1:max_val_ind+1] = con_mean[curr_max_val_ind+1:max_val_ind+1]
+
+        curr_min_val_ind = np.min(np.where(con_flux_arr[i,:] != 0))
+        curr_max_val_ind = np.max(np.where(con_flux_arr[i,:] != 0))
+        print "|", curr_min_val_ind, curr_max_val_ind
 
     con_sources, con_mixing, con_model = reduce_with_ica(con_flux_arr, ica_continuum_n)
     noncon_sources, noncon_mixing, noncon_model = reduce_with_ica(flux_arr, ica_noncontinuum_n)
@@ -95,6 +116,7 @@ def load_all_in_dir(path, use_con_flux=True, recombine_flux=False):
     pattern = "stacked*-continuum.csv"
     flux_list = []
     exp_list = []
+    mask_list = []
     wavelengths = None
 
     for file in os.listdir(path):
@@ -102,7 +124,7 @@ def load_all_in_dir(path, use_con_flux=True, recombine_flux=False):
             data = Table(Table.read(os.path.join(path, file), format="ascii.csv"), masked=True)
             mask = data['ivar'] == 0
 
-            data['con_flux'][mask] = np.interp(data['wavelength'][mask], data['wavelength'][~mask], data['con_flux'][~mask])
+            #data['con_flux'][mask] = np.interp(data['wavelength'][mask], data['wavelength'][~mask], data['con_flux'][~mask])
 
             exp = int(file.split("-")[2][3:])
 
@@ -114,12 +136,14 @@ def load_all_in_dir(path, use_con_flux=True, recombine_flux=False):
                 flux_list.append(np.array(data[y_col], copy=False))
             else:
                 flux_list.append(np.array(data['con_flux'] + data['flux'], copy=False))
+            mask_list.append(mask)
             exp_list.append(exp)
 
     flux_arr = np.array(flux_list)
     exp_arr = np.array(exp_list)
+    mask_arr = np.array(mask_list)
 
-    return flux_arr, exp_arr, wavelengths
+    return flux_arr, exp_arr, mask_arr, wavelengths
 
 if __name__ == '__main__':
     main()

@@ -49,7 +49,7 @@ manager = bdremote.Manager()
 peak_seek_end = 2820
 skyexp_wlen_start = 3500.26
 skyexp_wlen_delta = 0.975
-skyexp_wlen_out = np.arange(skyexp_wlen_start, 10403, skyexp_wlen_delta)
+skyexp_wlen_out = np.arange(skyexp_wlen_start, 10443, skyexp_wlen_delta)
 
 skyexp_loglam_start = 3.5441
 skyexp_loglam_delta = 0.00006675

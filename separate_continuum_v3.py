@@ -35,6 +35,37 @@ noisy_mult = np.array([15])
 split_noisy_app = 2700 #2650 # = 6084.01 A
 
 
+def filter_and_subtract(filtered, wavelength, window_size, sigma, pad=True):
+    mask = filtered.mask.copy()
+    orig = filtered.copy()
+    pad_size = 0
+    orig_begin = 0
+    orig_end = mask.size
+
+    if pad:
+        trimmed_filtered, orig_begin, orig_end = trim_array_from_mask(filtered, mask, buffer=0)
+        low_extent = np.ma.concatenate( (trimmed_filtered[:window_size/2+1], trimmed_filtered[:window_size/2+1][::-1]) )
+        high_extent = np.ma.concatenate( (trimmed_filtered[-window_size/2:][::-1], trimmed_filtered[-window_size/2:]) )
+        pad_size = low_extent.size
+        filtered = np.ma.concatenate( (low_extent, trimmed_filtered, high_extent) )
+
+    window = general_gaussian(window_size, p=2.5, sig=sigma, sym=True) + general_gaussian(window_size, p=0.5, sig=sigma*4, sym=True)
+
+    if np.any(filtered.mask) and np.any(~filtered.mask):
+        filtered[mask] = np.interp(wavelength[mask], wavelength[~mask], filtered[~mask])
+    filtered = fftconvolve(window, filtered)
+    filtered = (np.ma.average(orig) / np.ma.average(filtered)) * filtered
+    filtered = np.roll(filtered, -(window_size-1)/2)[:-(window_size-1)]
+
+    if pad:
+        new_filtered = np.ma.empty((mask.size, ), dtype=float)
+        new_filtered[:] = 0
+        new_filtered[orig_begin:orig_end+1] = filtered[pad_size:-pad_size]
+        new_filtered.mask = mask
+        filtered = new_filtered
+
+    return filtered
+
 def main():
     path = "."
     pattern = ""
@@ -52,37 +83,12 @@ def main():
             idstr = file[:file.rfind('.')]
 
             test_data = data.copy()
-
             test_data['flux'] = minimize(test_data['wavelength'], test_data['flux'], [100, 200, 300], 0, start_ind=split_noisy_app)
 
-            window_size = 201
-            sigma=24
-            window = general_gaussian(window_size, p=2.5, sig=sigma, sym=True) + general_gaussian(window_size, p=0.5, sig=sigma*4, sym=True)
-            #window = gaussian(window_size, std=sigma, sym=True) +  gaussian(window_size, std=sigma*4, sym=True)
-            filtered = test_data['flux'].copy()
-            wavelength = test_data['wavelength']
-            mask = filtered.mask.copy()
-            if np.any(filtered.mask) and np.any(~filtered.mask):
-                filtered[mask] = np.interp(wavelength[mask], wavelength[~mask], filtered[~mask])
-            filtered = fftconvolve(window, filtered)
-            filtered = (np.ma.average(test_data['flux']) / np.ma.average(filtered)) * filtered
-            filtered = np.roll(filtered, -(window_size-1)/2)[:-(window_size-1)]
-
+            filtered = filter_and_subtract(test_data['flux'], test_data['wavelength'], 201, 24)
             test_data['flux'] = np.ma.min(np.ma.vstack([test_data['flux'], filtered]), axis=0)
 
-            window_size = 161
-            sigma=18
-            window = general_gaussian(window_size, p=2.5, sig=sigma, sym=True) +  general_gaussian(window_size, p=2.5, sig=sigma*4, sym=True)
-            #window = gaussian(window_size, std=sigma, sym=True) +  gaussian(window_size, std=sigma*4, sym=True)
-            filtered = test_data['flux'].copy()
-            wavelength = test_data['wavelength']
-            mask = filtered.mask.copy()
-            if np.any(filtered.mask) and np.any(~filtered.mask):
-                filtered[mask] = np.interp(wavelength[mask], wavelength[~mask], filtered[~mask])
-            filtered = fftconvolve(window, filtered)
-            filtered = (np.ma.average(test_data['flux']) / np.ma.average(filtered)) * filtered
-            filtered = np.roll(filtered, -(window_size-1)/2)[:-(window_size-1)]
-
+            filtered = filter_and_subtract(test_data['flux'], test_data['wavelength'], 161, 18)
             test_data['flux'] = np.ma.min(np.ma.vstack([test_data['flux'], filtered]), axis=0)
 
             continuum = split_spectrum(test_data['wavelength'], test_data['flux'])
@@ -152,35 +158,9 @@ def split_spectrum(work_wlen, work_data):
     work_wlen_cp = work_wlen.copy()
     work_data_cp = work_data.copy()
 
-    mask = work_data.mask.copy()
+    filtered = filter_and_subtract(work_data_cp, work_wlen_cp, 161, 12)
+    cont_flux = np.ma.min(np.vstack([filtered, work_data_cp]), axis=0)
 
-    window_size = 161
-    sigma=12
-    #window = general_gaussian(window_size, p=0.5, sig=sigma, sym=True)
-    window = gaussian(window_size, std=sigma, sym=True)
-    filtered = work_data_cp.copy()
-    if np.any(filtered.mask) and np.any(~filtered.mask):
-        filtered[mask] = np.interp(work_wlen_cp[mask], work_wlen_cp[~mask], work_data_cp[~mask])
-    if np.any(work_data_cp.mask) and np.any(~work_data_cp.mask):
-        work_data_cp[mask] = np.interp(work_wlen_cp[mask], work_wlen_cp[~mask], work_data_cp[~mask])
-    filtered = fftconvolve(window, filtered)
-    filtered = (np.ma.average(work_data_cp) / np.ma.average(filtered)) * filtered
-    filtered = np.roll(filtered, -(window_size-1)/2)[:-(window_size-1)]
-
-    window = general_gaussian(window_size, p=0.5, sig=sigma, sym=True)
-    #window = gaussian(window_size, std=sigma, sym=True)
-    filtered = work_data_cp.copy()
-    if np.any(filtered.mask) and np.any(~filtered.mask):
-        filtered[mask] = np.interp(work_wlen_cp[mask], work_wlen_cp[~mask], work_data_cp[~mask])
-    if np.any(work_data_cp.mask) and np.any(~work_data_cp.mask):
-        work_data_cp[mask] = np.interp(work_wlen_cp[mask], work_wlen_cp[~mask], work_data_cp[~mask])
-    filtered = fftconvolve(window, filtered)
-    filtered = (np.ma.average(work_data_cp) / np.ma.average(filtered)) * filtered
-    filtered = np.roll(filtered, -(window_size-1)/2)[:-(window_size-1)]
-
-    work_data_cp = np.ma.min(np.vstack([filtered, work_data_cp]), axis=0)
-
-    cont_flux = work_data_cp
     return cont_flux
 
 def chunk_array(data, begin_orig_mask, end_orig_mask, block_size, extend_func=np.ma.mean, extent_val=None, extent_type=float):
