@@ -165,12 +165,14 @@ def load_plot_etc_target_type(metadata_path, spectra_path, test_ind, target_type
     for file in os.listdir(spectra_path):
         if fnmatch.fnmatch(file, "stacked_sky_*exp{}-continuum.csv".format(c_exposures[sorted_inds[test_ind]])):
             data = Table.read(os.path.join(spectra_path, file), format="ascii.csv")
-            mask = data['ivar'] == 0
+            mask = (data['ivar'] == 0) | np.isclose(rfr_predicted_continuum[0], 0)
             #data['con_flux'][mask] = np.interp(data['wavelength'][mask], data['wavelength'][~mask], data['con_flux'][~mask])
 
             actual = data['flux']
             if target_type == 'continuum':
                 actual = data['con_flux']
+
+            print rfr_predicted_continuum[0][~mask]
 
             rfr_delta = rfr_predicted_continuum[0] - actual
             plt.plot(c_wavelengths[~mask], rfr_predicted_continuum[0][~mask])

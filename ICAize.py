@@ -37,26 +37,15 @@ def main():
     flux_arr, exposure_arr, masks, wavelengths = load_all_in_dir(path, use_con_flux=False,
                                                     recombine_flux=False)
 
-    #mask_summed = (0 == np.sum(masks, axis=0))
-    con_mean = np.mean(con_flux_arr, axis=0)
+    mask_summed = np.sum(con_masks, axis=0)
 
-    min_val_ind = np.min(np.where(con_mean != 0))
-    max_val_ind = np.max(np.where(con_mean != 0))
+    min_val_ind = np.min(np.where(mask_summed == 0))
+    max_val_ind = np.max(np.where(mask_summed == 0))
     print min_val_ind, max_val_ind
 
     for i in range(con_flux_arr.shape[0]):
-        curr_min_val_ind = np.min(np.where(con_flux_arr[i,:] != 0))
-        curr_max_val_ind = np.max(np.where(con_flux_arr[i,:] != 0))
-        print curr_min_val_ind, curr_max_val_ind,
-
-        print (min_val_ind, curr_min_val_ind),
-        con_flux_arr[i,min_val_ind:curr_min_val_ind] = con_mean[min_val_ind:curr_min_val_ind]
-        print (curr_max_val_ind+1, max_val_ind+1),
-        con_flux_arr[i,curr_max_val_ind+1:max_val_ind+1] = con_mean[curr_max_val_ind+1:max_val_ind+1]
-
-        curr_min_val_ind = np.min(np.where(con_flux_arr[i,:] != 0))
-        curr_max_val_ind = np.max(np.where(con_flux_arr[i,:] != 0))
-        print "|", curr_min_val_ind, curr_max_val_ind
+        con_flux_arr[i,:min_val_ind] = 0
+        con_flux_arr[i,max_val_ind+1:] = 0
 
     con_sources, con_mixing, con_model = reduce_with_ica(con_flux_arr, ica_continuum_n)
     noncon_sources, noncon_mixing, noncon_model = reduce_with_ica(flux_arr, ica_noncontinuum_n)
