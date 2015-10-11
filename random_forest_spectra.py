@@ -169,6 +169,8 @@ def load_plot_etc_target_type(metadata_path, spectra_path, test_ind, target_type
     rfr_prediction = rfr.predict(test_X)
     rfr_predicted_continuum = ica.inverse_transform(rfr_prediction, copy=True)
 
+    print test_ind
+
     data = None
     actual = None
     mask = None
