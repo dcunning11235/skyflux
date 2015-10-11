@@ -35,7 +35,7 @@ def load_all_spectra_data(path, noncon_file=None, con_file=None):
 def load_spectra_data(path, target_type='continuum', filename=None):
     if filename is None:
         filename = ICAize.data_file.format(target_type)
-    print "Loading:", os.path.join(path, filename)
+    #print "Loading:", os.path.join(path, filename)
     npz = np.load(os.path.join(path, filename))
 
     sources = npz['sources']
@@ -44,9 +44,9 @@ def load_spectra_data(path, target_type='continuum', filename=None):
     wavelengths = npz['wavelengths']
 
     npz.close()
-    print "Using", len(sources), "sources with length", len(sources[0])
-    print mixing.shape
-    print exposures.shape
+    #print "Using", len(sources), "sources with length", len(sources[0])
+    #print mixing.shape
+    #print exposures.shape
     return sources, mixing, exposures, wavelengths
 
 def load_observation_metadata(path, file = "annotated_metadata.csv"):
@@ -60,7 +60,7 @@ def trim_observation_metadata(data, copy=False):
 
     kept_columns = ['EXP_ID', 'RA', 'DEC', 'AZ', 'ALT', 'AIRMASS',
                     'LUNAR_MAGNITUDE', 'LUNAR_ELV', 'LUNAR_SEP', 'SOLAR_ELV',
-                    'SOLAR_SEP', 'GALACTIC_CORE_SEP', 'GALACTIC_PLANE_SEP']
+                    'SOLAR_SEP', 'GALACTIC_CORE_SEP', 'GALACTIC_PLANE_SEP', 'SS_COUNT', 'SS_AREA']
     removed_columns = [name for name in data.colnames if name not in kept_columns]
     data.remove_columns(removed_columns)
 
@@ -71,7 +71,7 @@ def main():
     spectra_path = "."
     test_ind = 0
     #train_span = slice(None,-1,None)
-    target_types = 'both' #'continuum'
+    target_types = 'continuum'
 
     if len(sys.argv) == 2:
         metadata_path = sys.argv[1]
@@ -81,11 +81,11 @@ def main():
     if len(sys.argv) == 4:
         metadata_path = sys.argv[1]
         spectra_path = sys.argv[2]
-        test_ind = int(sys.argv[3])
+        test_inds = sys.argv[3].split(",")
     if len(sys.argv) == 5:
         metadata_path = sys.argv[1]
         spectra_path = sys.argv[2]
-        test_ind = int(sys.argv[3])
+        test_inds = sys.argv[3].split(",")
         target_types = sys.argv[4]
 
     if target_types == 'both':
@@ -96,13 +96,16 @@ def main():
     results = None
     wavelengths = None
     for target_type in target_types:
-        wavelengths, rfr_result, knn_result = load_plot_etc_target_type(metadata_path, spectra_path, test_ind, target_type)
-        if results is None:
-            results = [rfr_result, knn_result]
-        else:
-            results[0] += rfr_result
-            results[1] += knn_result
-
+        for test_ind in test_inds:
+            wavelengths, rfr_result, knn_result, errs = load_plot_etc_target_type(metadata_path, spectra_path, int(test_ind), target_type, no_plot=True)
+            if results is None:
+                results = [rfr_result, knn_result, errs, np.empty((3,), dtype=float)]
+            else:
+                results[0] += rfr_result
+                results[1] += knn_result
+                results[2] += errs
+                results[3] += np.power(errs,2)
+    '''
     for result in results:
         plt.plot(wavelengths, result)
         plt.plot(wavelengths, [0]*len(wavelengths))
@@ -110,8 +113,13 @@ def main():
         plt.tight_layout()
         plt.show()
         plt.close()
+    '''
 
-def load_plot_etc_target_type(metadata_path, spectra_path, test_ind, target_type):
+    print results[2]/len(test_ind)
+    print results[3]/len(test_ind)-np.power(results[2]/len(test_ind))
+
+
+def load_plot_etc_target_type(metadata_path, spectra_path, test_ind, target_type, no_plot=False):
     obs_metadata = trim_observation_metadata(load_observation_metadata(metadata_path))
     #c_sources, c_mixing, c_exposures, nc_sources, nc_mixing, noncon_exposures = load_all_spectra_data(spectra_path)
     c_sources, c_mixing, c_exposures, c_wavelengths = load_spectra_data(spectra_path, target_type=target_type)
@@ -121,8 +129,10 @@ def load_plot_etc_target_type(metadata_path, spectra_path, test_ind, target_type
     reduced_obs_metadata.sort('EXP_ID')
     sorted_inds = np.argsort(c_exposures)
 
+    errs = np.empty((3,), dtype=float)
+
     rfr = ensemble.RandomForestRegressor(n_estimators=200, min_samples_split=1,
-                        random_state=rfr_random_state, n_jobs=-1, verbose=True)
+                        random_state=rfr_random_state, n_jobs=-1, verbose=False)
     #mtencv = linear_model.MultiTaskElasticNetCV(copy_X=True, normalize=False, n_alphas=200, n_jobs=-1)
     #random_state=rfr_random_state, selection='random',
     #rnn = neighbors.RadiusNeighborsRegressor(weights='distance')
@@ -144,7 +154,7 @@ def load_plot_etc_target_type(metadata_path, spectra_path, test_ind, target_type
     test_y =  (c_sources[sorted_inds])[test_ind]
     train_y = np.vstack( [(c_sources[sorted_inds])[:test_ind], (c_sources[sorted_inds])[test_ind+1:]] )
 
-    print "Which is exposure:", c_exposures[sorted_inds[test_ind]]
+    #print "Which is exposure:", c_exposures[sorted_inds[test_ind]]
     title_str = "exp{}, {}".format(c_exposures[sorted_inds[test_ind]], target_type)
 
     ica = ICAize.unpickle_FastICA(target_type=target_type)
@@ -172,52 +182,63 @@ def load_plot_etc_target_type(metadata_path, spectra_path, test_ind, target_type
             if target_type == 'continuum':
                 actual = data['con_flux']
 
-            print rfr_predicted_continuum[0][~mask]
+            #print rfr_predicted_continuum[0][~mask]
 
             rfr_delta = rfr_predicted_continuum[0] - actual
-            plt.plot(c_wavelengths[~mask], rfr_predicted_continuum[0][~mask])
-            plt.plot(c_wavelengths[~mask], actual[~mask])
-            plt.plot(c_wavelengths[~mask], rfr_delta[~mask])
-    plt.plot(c_wavelengths, [0]*len(c_wavelengths))
+            if not no_plot:
+                plt.plot(c_wavelengths[~mask], rfr_predicted_continuum[0][~mask])
+                plt.plot(c_wavelengths[~mask], actual[~mask])
+                plt.plot(c_wavelengths[~mask], rfr_delta[~mask])
+    if not no_plot:
+        plt.plot(c_wavelengths, [0]*len(c_wavelengths))
     err_term = np.sum(np.power(rfr_delta[~mask], 2))/len(c_wavelengths[~mask])
-    plt.legend(['Predicted', 'Actual', 'Delta {:0.5f}'.format(err_term)])
-    plt.tight_layout()
-    plt.title("Random Forest Regressor: {}".format(title_str))
-    plt.show()
-    plt.close()
-
+    if not no_plot:
+        plt.legend(['Predicted', 'Actual', 'Delta {:0.5f}'.format(err_term)])
+        plt.tight_layout()
+        plt.title("Random Forest Regressor: {}".format(title_str))
+        plt.show()
+        plt.close()
+    print err_term,
+    errs[0] = err_term
 
     knn_prediction = knn.predict(test_X)
     knn_predicted_continuum = ica.inverse_transform(knn_prediction, copy=True)
 
-    plt.plot(c_wavelengths[~mask], knn_predicted_continuum[0][~mask])
-    plt.plot(c_wavelengths[~mask], actual[~mask])
+    if not no_plot:
+        plt.plot(c_wavelengths[~mask], knn_predicted_continuum[0][~mask])
+        plt.plot(c_wavelengths[~mask], actual[~mask])
     knn_delta = knn_predicted_continuum[0] - actual
     err_term = np.sum(np.power(knn_delta[~mask], 2))/len(c_wavelengths[~mask])
-    plt.plot(c_wavelengths[~mask], knn_delta[~mask])
-    plt.plot(c_wavelengths, [0]*len(c_wavelengths))
-    plt.legend(['Predicted', 'Actual', 'Delta {:0.5f}'.format(err_term)])
-    plt.tight_layout()
-    plt.title("Good 'ol K-NN: {}".format(title_str))
-    plt.show()
-    plt.close()
-
+    if not no_plot:
+        plt.plot(c_wavelengths[~mask], knn_delta[~mask])
+        plt.plot(c_wavelengths, [0]*len(c_wavelengths))
+        plt.legend(['Predicted', 'Actual', 'Delta {:0.5f}'.format(err_term)])
+        plt.tight_layout()
+        plt.title("Good 'ol K-NN: {}".format(title_str))
+        plt.show()
+        plt.close()
+    print err_term,
+    errs[1] = err_term
 
     avg_predicted_continuum = (knn_predicted_continuum + rfr_predicted_continuum)/2
 
-    plt.plot(c_wavelengths[~mask], avg_predicted_continuum[0][~mask])
-    plt.plot(c_wavelengths[~mask], actual[~mask])
+    if not no_plot:
+        plt.plot(c_wavelengths[~mask], avg_predicted_continuum[0][~mask])
+        plt.plot(c_wavelengths[~mask], actual[~mask])
     avg_delta = avg_predicted_continuum[0] - actual
     err_term = np.sum(np.power(avg_delta[~mask], 2))/len(c_wavelengths[~mask])
-    plt.plot(c_wavelengths[~mask], avg_delta[~mask])
-    plt.plot(c_wavelengths, [0]*len(c_wavelengths))
-    plt.legend(['Predicted', 'Actual', 'Delta {:0.5f}'.format(err_term)])
-    plt.tight_layout()
-    plt.title("Avg. of KNN,RFR: {}".format(title_str))
-    plt.show()
-    plt.close()
+    if not no_plot:
+        plt.plot(c_wavelengths[~mask], avg_delta[~mask])
+        plt.plot(c_wavelengths, [0]*len(c_wavelengths))
+        plt.legend(['Predicted', 'Actual', 'Delta {:0.5f}'.format(err_term)])
+        plt.tight_layout()
+        plt.title("Avg. of KNN,RFR: {}".format(title_str))
+        plt.show()
+        plt.close()
+    print err_term
+    errs[2] = err_term
 
-    return c_wavelengths, rfr_delta, knn_delta
+    return c_wavelengths, rfr_delta, knn_delta, errs
 
 
 if __name__ == '__main__':
