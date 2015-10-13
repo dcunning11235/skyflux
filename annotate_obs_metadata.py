@@ -44,6 +44,20 @@ def find_ephemeris_lookup_date(tai_beg, tai_end, obs_md_table):
 
     return ret[mask], obs_md_table[mask]
 
+def find_sunspot_data(ephemeris_block, sunspot_md_table):
+    count_ret = np.zeros((len(ephemeris_block,), ), dtype=float)
+    area_ret = np.zeros((len(ephemeris_block,), ), dtype=float)
+
+    #terrible for performance, but one-time only
+    for i, somedate in enumerate(ephemeris_block):
+        #print ephemeris_block[i]
+        #lookup_str = ephemeris_block[i].date().strftime('%Y-%b-%d')
+        lookup_str = ephemeris_block[i].split()[0]
+        result = sunspot_md_table[sunspot_md_table["DATE"]==lookup_str]["SESC","SSAREA"]
+        count_ret[i], area_ret[i] = result["SESC"][0], result["SSAREA"][0]
+
+    return count_ret, area_ret
+
 def get_ephemeris_block_in_interval(tai_beg, tai_end):
     tai_end_dt = tai_str_to_datetime(tai_end)
     tai_beg_dt = tai_str_to_datetime(tai_beg)
@@ -102,12 +116,19 @@ def main():
     lunar_md_table.rename_column('UTC', 'EPHEM_DATE')
     solar_md_table = Table.read(sys.argv[3], format="ascii.csv")
     solar_md_table.rename_column('UTC', 'EPHEM_DATE')
+    sunspot_md_table = Table.read(sys.argv[4], format="ascii.csv")
 
     print "Table has {} entries".format(len(obs_md_table))
     lookup_date, obs_md_table = find_ephemeris_lookup_date(obs_md_table['TAI-BEG'], obs_md_table['TAI-END'], obs_md_table)
     print "Successfully got {} ephemeris date entries".format(len(lookup_date))
     ephem_date_col = Column(lookup_date, name="EPHEM_DATE")
     obs_md_table.add_column(ephem_date_col)
+
+    sunspot_count, sunspot_area = find_sunspot_data(ephem_date_col, sunspot_md_table)
+    sunspot_count_col = Column(sunspot_count, "SS_COUNT")
+    sunspot_area_col = Column(sunspot_area, "SS_AREA")
+    obs_md_table.add_column(sunspot_count_col)
+    obs_md_table.add_column(sunspot_area_col)
 
     def _get_separation(start, end, cache=None):
         if cache is not None:
