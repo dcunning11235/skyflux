@@ -99,7 +99,7 @@ def main():
         if test_inds[0] == 'ALL':
             test_inds = range(int(test_inds[1]), int(test_inds[2]))
         for test_ind in test_inds:
-            wavelengths, rfr_result, knn_result, errs = load_plot_etc_target_type(metadata_path, spectra_path, int(test_ind), target_type, no_plot=True)
+            wavelengths, rfr_result, knn_result, errs = load_plot_etc_target_type(metadata_path, spectra_path, int(test_ind), target_type, no_plot=False)
             if results is None:
                 results = [rfr_result, knn_result, errs, np.empty((3,), dtype=float)]
             else:
@@ -118,7 +118,7 @@ def main():
     '''
 
     print results[2]/len(test_ind)
-    print results[3]/len(test_ind)-np.power(results[2]/len(test_ind))
+    print results[3]/len(test_ind)-np.power(results[2]/len(test_ind),2)
 
 
 def load_plot_etc_target_type(metadata_path, spectra_path, test_ind, target_type, no_plot=False):
@@ -171,7 +171,7 @@ def load_plot_etc_target_type(metadata_path, spectra_path, test_ind, target_type
     rfr_prediction = rfr.predict(test_X)
     rfr_predicted_continuum = ica.inverse_transform(rfr_prediction, copy=True)
 
-    print test_ind,
+    print test_ind, c_exposures[sorted_inds[test_ind]]
 
     data = None
     actual = None

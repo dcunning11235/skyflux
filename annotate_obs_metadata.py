@@ -125,8 +125,8 @@ def main():
     obs_md_table.add_column(ephem_date_col)
 
     sunspot_count, sunspot_area = find_sunspot_data(ephem_date_col, sunspot_md_table)
-    sunspot_count_col = Column(sunspot_count, "SS_COUNT")
-    sunspot_area_col = Column(sunspot_area, "SS_AREA")
+    sunspot_count_col = Column(sunspot_count, name="SS_COUNT")
+    sunspot_area_col = Column(sunspot_area, name="SS_AREA")
     obs_md_table.add_column(sunspot_count_col)
     obs_md_table.add_column(sunspot_area_col)
 

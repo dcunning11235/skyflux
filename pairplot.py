@@ -47,6 +47,7 @@ def main():
         ann_metadata = ann_metadata[ann_metadata["AVG_5K_FLUX"]!=0]
         #hue="AVG_5K_FLUX"
 
+    '''
     g = sns.pairplot(ann_metadata, vars={"LUNAR_MAGNITUDE", "LUNAR_ELV",
         "LUNAR_SEP", "SOLAR_ELV", "SOLAR_SEP"}, hue=hue)
     plt.show()
@@ -71,6 +72,23 @@ def main():
     plt.close()
 
     g = sns.jointplot(ann_metadata["ALT"], ann_metadata["LUNAR_SEP"], stat_func=kendalltau)
+    plt.show()
+    plt.close()
+    '''
+
+    g = sns.pairplot(ann_metadata, vars={"LUNAR_MAGNITUDE", "LUNAR_ELV", "LUNAR_SEP", "DELTA"}, hue=hue)
+    plt.show()
+    plt.close()
+
+    g = sns.pairplot(ann_metadata, vars={"SOLAR_ELV", "SOLAR_SEP", "SS_AREA", "SS_COUNT", "DELTA"})
+    plt.show()
+    plt.close()
+
+    g = sns.pairplot(ann_metadata, vars={"AIRMASS", "GALACTIC_CORE_SEP", "GALACTIC_PLANE_SEP", "DELTA"})
+    plt.show()
+    plt.close()
+
+    g = sns.pairplot(ann_metadata, vars={"RA", "DEC", "ALT", "AZ", "DELTA"})
     plt.show()
     plt.close()
 
