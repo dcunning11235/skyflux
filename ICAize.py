@@ -36,6 +36,8 @@ def main():
                                                     use_con_flux=True, recombine_flux=False)
     flux_arr, exposure_arr, masks, wavelengths = load_all_in_dir(path, use_con_flux=False,
                                                     recombine_flux=False)
+    comb_flux_arr, comb_exposure_arr, comb_masks, comb_wavelengths = \
+        con_flux_arr + flux_arr, con_exposure_arr[:], con_masks[:], con_wavelengths[:]
 
     mask_summed = np.sum(con_masks, axis=0)
 
@@ -49,6 +51,7 @@ def main():
 
     con_sources, con_mixing, con_model = reduce_with_ica(con_flux_arr, ica_continuum_n)
     noncon_sources, noncon_mixing, noncon_model = reduce_with_ica(flux_arr, ica_noncontinuum_n)
+    comb_sources, comb_mixing, comb_model = reduce_with_ica(comb_flux_arr, ica_noncontinuum_n)
 
     np.savez(data_file.format("continuum"), sources=con_sources, mixing=con_mixing,
                 exposures=con_exposure_arr, wavelengths=wavelengths)
@@ -58,6 +61,9 @@ def main():
                 exposures=exposure_arr, wavelengths=wavelengths)
     pickle_FastICA(noncon_model, target_type='noncontinuum')
 
+    np.savez(data_file.format("combined"), sources=comb_sources, mixing=comb_mixing,
+                exposures=exposure_arr, wavelengths=wavelengths)
+    pickle_FastICA(comb_model, target_type='combined')
 
 def pickle_FastICA(model, path='.', target_type='continuum', filename=None):
     if filename is None:
@@ -81,12 +87,12 @@ def get_FastICA(target_type='continuum', n=None, mixing=None):
                         random_state=ica_random_state, w_init=mixing)
     else:
         if target_type == 'continuum':
-            ret = FastICA(n_components = ica_continuum_n, whiten=True, max_iter=ica_max_iter,
+            return FastICA(n_components = ica_continuum_n, whiten=True, max_iter=ica_max_iter,
                         random_state=ica_random_state, w_init=mixing)
-            print "Mixing:", mixing
-            print "Init'd FastICA with mixing:", ret.mixing_
-            return ret
         elif target_type == 'noncontinuum':
+            return FastICA(n_components = ica_noncontinuum_n, whiten=True, max_iter=ica_max_iter,
+                        random_state=ica_random_state, w_init=mixing)
+        elif target_type == 'combined':
             return FastICA(n_components = ica_noncontinuum_n, whiten=True, max_iter=ica_max_iter,
                         random_state=ica_random_state, w_init=mixing)
 
@@ -112,8 +118,6 @@ def load_all_in_dir(path, use_con_flux=True, recombine_flux=False):
         if fnmatch.fnmatch(file, pattern):
             data = Table(Table.read(os.path.join(path, file), format="ascii.csv"), masked=True)
             mask = data['ivar'] == 0
-
-            #data['con_flux'][mask] = np.interp(data['wavelength'][mask], data['wavelength'][~mask], data['con_flux'][~mask])
 
             exp = int(file.split("-")[2][3:])
 

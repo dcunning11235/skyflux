@@ -71,7 +71,8 @@ def main():
     spectra_path = "."
     test_ind = 0
     #train_span = slice(None,-1,None)
-    target_types = 'continuum'
+    #target_types = 'continuum'
+    target_types = 'combined'
 
     if len(sys.argv) == 2:
         metadata_path = sys.argv[1]
@@ -117,9 +118,7 @@ def main():
 
 def load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_type, no_plot=False):
     obs_metadata = trim_observation_metadata(load_observation_metadata(metadata_path))
-    #c_sources, c_mixing, c_exposures, nc_sources, nc_mixing, noncon_exposures = load_all_spectra_data(spectra_path)
     c_sources, c_mixing, c_exposures, c_wavelengths = load_spectra_data(spectra_path, target_type=target_type)
-    #nc_sources, nc_mixing, nc_exposures, nc_wavelengths = load_spectra_data(spectra_path, target_type='noncontinuum')
 
     reduced_obs_metadata = obs_metadata[np.in1d(obs_metadata['EXP_ID'], c_exposures)]
     reduced_obs_metadata.sort('EXP_ID')
@@ -167,6 +166,8 @@ def load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_typ
                 actual = data['flux']
                 if target_type == 'continuum':
                     actual = data['con_flux']
+                elif target_type == 'combined':
+                    actual += data['con_flux']
 
                 rfr_delta = rfr_predicted_continuum[0] - actual
                 if not no_plot:
