@@ -35,7 +35,6 @@ def load_all_spectra_data(path, noncon_file=None, con_file=None):
 def load_spectra_data(path, target_type='continuum', filename=None):
     if filename is None:
         filename = ICAize.data_file.format(target_type)
-    #print "Loading:", os.path.join(path, filename)
     npz = np.load(os.path.join(path, filename))
 
     sources = npz['sources']
@@ -44,9 +43,6 @@ def load_spectra_data(path, target_type='continuum', filename=None):
     wavelengths = npz['wavelengths']
 
     npz.close()
-    #print "Using", len(sources), "sources with length", len(sources[0])
-    #print mixing.shape
-    #print exposures.shape
     return sources, mixing, exposures, wavelengths
 
 def load_observation_metadata(path, file = "annotated_metadata.csv"):
@@ -70,8 +66,6 @@ def main():
     metadata_path = ".."
     spectra_path = "."
     test_ind = 0
-    #train_span = slice(None,-1,None)
-    #target_types = 'continuum'
     target_types = 'combined'
 
     if len(sys.argv) == 2:
@@ -101,7 +95,7 @@ def main():
             test_inds = range(int(test_inds[1]), int(test_inds[2]))
         else:
             test_inds = [int(test_inds[0])]
-        results = load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_type, no_plot=False)
+        results = load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_type, no_plot=True, save_out=True)
     '''
     for result in results:
         plt.plot(wavelengths, result)
@@ -116,7 +110,7 @@ def main():
     print results[3]/len(test_inds)-np.power(results[2]/len(test_inds),2)
 
 
-def load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_type, no_plot=False):
+def load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_type, no_plot=False, save_out=False):
     obs_metadata = trim_observation_metadata(load_observation_metadata(metadata_path))
     c_sources, c_mixing, c_exposures, c_wavelengths = load_spectra_data(spectra_path, target_type=target_type)
 
@@ -131,6 +125,7 @@ def load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_typ
     knn = neighbors.KNeighborsRegressor(weights='distance', n_neighbors=10, p=64)
 
     reduced_obs_metadata.remove_column('EXP_ID')
+    #reduced_obs_metadata.remove_column('AIRMASS')
     md_len = len(reduced_obs_metadata)
     X_arr = np.array(reduced_obs_metadata).view('f8').reshape((md_len,-1))
 
@@ -222,6 +217,16 @@ def load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_typ
             plt.close()
         print err_term
         errs[2] = err_term
+
+        if save_out:
+            out_table = Table()
+            wavelength_col = Column(c_wavelengths, name="wavelength", dtype=float)
+            rf_col = Column(rfr_predicted_continuum[0], name="rf_flux", dtype=float)
+            knn_col = Column(knn_predicted_continuum[0], name="knn_flux", dtype=float)
+            avg_col = Column(avg_predicted_continuum[0], name="avg_flux", dtype=float)
+            mask_col = Column(~mask, name="mask_col", dtype=bool)
+            out_table.add_columns([wavelength_col, rf_col, knn_col, avg_col, mask_col])
+            out_table.write("predicted_sky_exp{}.csv".format(c_exposures[sorted_inds[test_ind]]), format="ascii.csv")
 
         if results is None:
             results = [rfr_delta, knn_delta, errs, np.empty((3,), dtype=float)]
