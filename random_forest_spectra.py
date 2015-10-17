@@ -67,6 +67,7 @@ def main():
     spectra_path = "."
     test_ind = 0
     target_types = 'combined'
+    #target_types = 'continuum'
 
     if len(sys.argv) == 2:
         metadata_path = sys.argv[1]
@@ -95,7 +96,7 @@ def main():
             test_inds = range(int(test_inds[1]), int(test_inds[2]))
         else:
             test_inds = [int(test_inds[0])]
-        results = load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_type, no_plot=True, save_out=True)
+        results = load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_type, no_plot=True, save_out=True, restrict_delta=True)
     '''
     for result in results:
         plt.plot(wavelengths, result)
@@ -110,7 +111,7 @@ def main():
     print results[3]/len(test_inds)-np.power(results[2]/len(test_inds),2)
 
 
-def load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_type, no_plot=False, save_out=False):
+def load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_type, no_plot=False, save_out=False, restrict_delta=False):
     obs_metadata = trim_observation_metadata(load_observation_metadata(metadata_path))
     c_sources, c_mixing, c_exposures, c_wavelengths = load_spectra_data(spectra_path, target_type=target_type)
 
@@ -153,10 +154,17 @@ def load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_typ
         data = None
         actual = None
         mask = None
+        delta_mask = None
+
         for file in os.listdir(spectra_path):
             if fnmatch.fnmatch(file, "stacked_sky_*exp{}-continuum.csv".format(c_exposures[sorted_inds[test_ind]])):
                 data = Table.read(os.path.join(spectra_path, file), format="ascii.csv")
                 mask = (data['ivar'] == 0) | np.isclose(rfr_predicted_continuum[0], 0)
+                if restrict_delta:
+                    delta_mask = mask.copy()
+                    delta_mask[:2700] = True
+                else:
+                    delta_mask = mask
 
                 actual = data['flux']
                 if target_type == 'continuum':
@@ -171,7 +179,7 @@ def load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_typ
                     plt.plot(c_wavelengths[~mask], rfr_delta[~mask])
         if not no_plot:
             plt.plot(c_wavelengths, [0]*len(c_wavelengths))
-        err_term = np.sum(np.power(rfr_delta[~mask], 2))/len(c_wavelengths[~mask])
+        err_term = np.sum(np.power(rfr_delta[~delta_mask], 2))/len(c_wavelengths[~delta_mask])
         if not no_plot:
             plt.legend(['Predicted', 'Actual', 'Delta {:0.5f}'.format(err_term)])
             plt.tight_layout()
@@ -188,7 +196,7 @@ def load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_typ
             plt.plot(c_wavelengths[~mask], knn_predicted_continuum[0][~mask])
             plt.plot(c_wavelengths[~mask], actual[~mask])
         knn_delta = knn_predicted_continuum[0] - actual
-        err_term = np.sum(np.power(knn_delta[~mask], 2))/len(c_wavelengths[~mask])
+        err_term = np.sum(np.power(knn_delta[~delta_mask], 2))/len(c_wavelengths[~delta_mask])
         if not no_plot:
             plt.plot(c_wavelengths[~mask], knn_delta[~mask])
             plt.plot(c_wavelengths, [0]*len(c_wavelengths))
@@ -206,7 +214,7 @@ def load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_typ
             plt.plot(c_wavelengths[~mask], avg_predicted_continuum[0][~mask])
             plt.plot(c_wavelengths[~mask], actual[~mask])
         avg_delta = avg_predicted_continuum[0] - actual
-        err_term = np.sum(np.power(avg_delta[~mask], 2))/len(c_wavelengths[~mask])
+        err_term = np.sum(np.power(avg_delta[~delta_mask], 2))/len(c_wavelengths[~delta_mask])
         if not no_plot:
             plt.plot(c_wavelengths[~mask], avg_delta[~mask])
             plt.plot(c_wavelengths, [0]*len(c_wavelengths))
