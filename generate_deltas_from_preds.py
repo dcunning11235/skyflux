@@ -37,13 +37,17 @@ def main():
                 avg_delta = predicted_data['avg_flux'] - actual_flux
 
                 delta_mask = (predicted_data['mask_col'] == 'False')
+                #Blue only
+                blue_mask = np.ones((len(delta_mask), ), dtype=int)
+                blue_mask[:2700] = False
+                delta_mask = delta_mask | blue_mask
 
                 rf_err_term = np.sum(np.power(rf_delta[~delta_mask], 2))/len(rf_delta[~delta_mask])
-                rf_err_sum = np.sum(rf_delta[~delta_mask])
+                rf_err_sum = np.sum(rf_delta[~delta_mask])/len(rf_delta[~delta_mask])
                 knn_err_term = np.sum(np.power(knn_delta[~delta_mask], 2))/len(knn_delta[~delta_mask])
-                knn_err_sum = np.sum(knn_delta[~delta_mask])
+                knn_err_sum = np.sum(knn_delta[~delta_mask])/len(knn_delta[~delta_mask])
                 avg_err_term = np.sum(np.power(avg_delta[~delta_mask], 2))/len(avg_delta[~delta_mask])
-                avg_err_sum = np.sum(avg_delta[~delta_mask])
+                avg_err_sum = np.sum(avg_delta[~delta_mask])/len(avg_delta[~delta_mask])
 
                 print exp_id, rf_err_term, rf_err_sum, knn_err_term, knn_err_sum, avg_err_term, avg_err_sum
 
