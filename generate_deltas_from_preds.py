@@ -25,9 +25,9 @@ def main():
             exp_id = file.split("_")[-1][3:9]
             spectra_file = "stacked_sky_*exp{}-continuum.csv".format(exp_id)
             actual_data = None
-            for data_file in os.listdir(predicted_path):
+            for data_file in os.listdir(spec_path):
                 if fnmatch.fnmatch(data_file, spectra_file):
-                    actual_data = Table.read(os.path.join(predicted_path, data_file), format="ascii.csv")
+                    actual_data = Table.read(os.path.join(spec_path, data_file), format="ascii.csv")
 
             if actual_data is not None:
                 actual_flux = actual_data['con_flux'] + actual_data['flux']
