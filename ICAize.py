@@ -25,7 +25,7 @@ ica_continuum_n=70
 ica_noncontinuum_n=110
 
 ica_data_file = "fastica_{}_sources_and_mixing.npz"
-spca_data_file = "spca_{}_souces_and_components.npz"
+spca_data_file = "spca_{}_sources_and_components.npz"
 ica_pickle_file = "fastica_{}_pickle.pkl"
 spca_pickle_file = "spca_{}_pickle.pkl"
 
