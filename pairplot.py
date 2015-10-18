@@ -5,7 +5,7 @@ import seaborn as sns
 import pandas as pd
 from scipy.stats import kendalltau
 
-sns.set()
+sns.set(        )
 
 import fnmatch
 import os
@@ -16,6 +16,16 @@ def main():
     ann_metadata = pd.read_csv(sys.argv[1])
 
     if len(sys.argv) == 3:
+        deltas = pd.read_csv(sys.argv[2], sep=" ") #, header=0, names=["ID","EXP_ID","RF_DELTA","KNN_DELTA","AVG_DELTA"])
+        '''
+        print ann_metadata.columns
+        print ""
+        print deltas.columns
+        print ""
+        '''
+
+        ann_metadata = pd.merge(ann_metadata, deltas, how='left', on=['EXP_ID'])
+        '''
         ann_metadata["AVG_5K_FLUX"] = 0
 
         path = '.'
@@ -34,6 +44,7 @@ def main():
                             (ann_metadata["MJD"]==int(mjd)) &
                             (ann_metadata["EXP_ID"]==int(exp))].index
                 ann_metadata.loc[index_val,"AVG_5K_FLUX"] = avg_5k_flux
+            '''
     '''
     del ann_metadata["TAI-END"]
     del ann_metadata["TAI-BEG"]
@@ -44,8 +55,12 @@ def main():
 
     hue=None
     if len(sys.argv) == 3:
-        ann_metadata = ann_metadata[ann_metadata["AVG_5K_FLUX"]!=0]
+        #ann_metadata = ann_metadata[ann_metadata["AVG_5K_FLUX"]!=0]
+        ann_metadata = ann_metadata.dropna()
+        ann_metadata["RF_DELTA"] = np.sqrt(ann_metadata["RF_DELTA"])
         #hue="AVG_5K_FLUX"
+
+    #print ann_metadata
 
     '''
     g = sns.pairplot(ann_metadata, vars={"LUNAR_MAGNITUDE", "LUNAR_ELV",
@@ -76,19 +91,19 @@ def main():
     plt.close()
     '''
 
-    g = sns.pairplot(ann_metadata, vars={"LUNAR_MAGNITUDE", "LUNAR_ELV", "LUNAR_SEP", "DELTA"}, hue=hue)
+    g = sns.pairplot(ann_metadata, vars={"LUNAR_MAGNITUDE", "LUNAR_ELV", "LUNAR_SEP", "RF_DELTA"})
     plt.show()
     plt.close()
 
-    g = sns.pairplot(ann_metadata, vars={"SOLAR_ELV", "SOLAR_SEP", "SS_AREA", "SS_COUNT", "DELTA"})
+    g = sns.pairplot(ann_metadata, vars={"SOLAR_ELV", "SOLAR_SEP", "SS_AREA", "SS_COUNT", "RF_DELTA"})
     plt.show()
     plt.close()
 
-    g = sns.pairplot(ann_metadata, vars={"AIRMASS", "GALACTIC_CORE_SEP", "GALACTIC_PLANE_SEP", "DELTA"})
+    g = sns.pairplot(ann_metadata, vars={"AIRMASS", "GALACTIC_CORE_SEP", "GALACTIC_PLANE_SEP", "RF_DELTA"})
     plt.show()
     plt.close()
 
-    g = sns.pairplot(ann_metadata, vars={"RA", "DEC", "ALT", "AZ", "DELTA"})
+    g = sns.pairplot(ann_metadata, vars={"RA", "DEC", "ALT", "AZ", "RF_DELTA"})
     plt.show()
     plt.close()
 

@@ -13,6 +13,11 @@ import sys
 
 def main():
     predicted_path = "."
+    spec_path = "."
+
+    if len(sys.arv) == 3:
+        predicted_path = sys.argv[1]
+        spec_path = sys.argv[2]
 
     for file in os.listdir(predicted_path):
         if fnmatch.fnmatch(file, "predicted_sky*exp??????.csv"):
@@ -34,10 +39,13 @@ def main():
                 delta_mask = (predicted_data['mask_col'] == 'False')
 
                 rf_err_term = np.sum(np.power(rf_delta[~delta_mask], 2))/len(rf_delta[~delta_mask])
+                rf_err_sum = np.sum(rf_delta[~delta_mask])
                 knn_err_term = np.sum(np.power(knn_delta[~delta_mask], 2))/len(knn_delta[~delta_mask])
+                knn_err_sum = np.sum(knn_delta[~delta_mask])
                 avg_err_term = np.sum(np.power(avg_delta[~delta_mask], 2))/len(avg_delta[~delta_mask])
+                avg_err_sum = np.sum(avg_delta[~delta_mask])
 
-                print exp_id, rf_err_term, knn_err_term, avg_err_term
+                print exp_id, rf_err_term, rf_err_sum, knn_err_term, knn_err_sum, avg_err_term, avg_err_sum
 
 if __name__ == '__main__':
     main()
