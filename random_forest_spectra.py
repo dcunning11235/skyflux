@@ -180,13 +180,14 @@ def load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_typ
         if not no_plot:
             plt.plot(c_wavelengths, [0]*len(c_wavelengths))
         err_term = np.sum(np.power(rfr_delta[~delta_mask], 2))/len(c_wavelengths[~delta_mask])
+        err_sum = np.sum(rfr_delta[~delta_mask])/len(rfr_delta[~delta_mask])
         if not no_plot:
             plt.legend(['Predicted', 'Actual', 'Delta {:0.5f}'.format(err_term)])
             plt.tight_layout()
             plt.title("Random Forest Regressor: {}".format(title_str))
             plt.show()
             plt.close()
-        print err_term,
+        print err_term, err_sum,
         errs[0] = err_term
 
         knn_prediction = knn.predict(test_X)
@@ -197,6 +198,7 @@ def load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_typ
             plt.plot(c_wavelengths[~mask], actual[~mask])
         knn_delta = knn_predicted_continuum[0] - actual
         err_term = np.sum(np.power(knn_delta[~delta_mask], 2))/len(c_wavelengths[~delta_mask])
+        err_sum = np.sum(knn_delta[~delta_mask])/len(knn_delta[~delta_mask])
         if not no_plot:
             plt.plot(c_wavelengths[~mask], knn_delta[~mask])
             plt.plot(c_wavelengths, [0]*len(c_wavelengths))
@@ -205,7 +207,7 @@ def load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_typ
             plt.title("Good 'ol K-NN: {}".format(title_str))
             plt.show()
             plt.close()
-        print err_term,
+        print err_term, err_sum,
         errs[1] = err_term
 
         avg_predicted_continuum = (knn_predicted_continuum + rfr_predicted_continuum)/2
@@ -215,6 +217,7 @@ def load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_typ
             plt.plot(c_wavelengths[~mask], actual[~mask])
         avg_delta = avg_predicted_continuum[0] - actual
         err_term = np.sum(np.power(avg_delta[~delta_mask], 2))/len(c_wavelengths[~delta_mask])
+        err_sum = np.sum(avg_delta[~delta_mask])/len(avg_delta[~delta_mask])
         if not no_plot:
             plt.plot(c_wavelengths[~mask], avg_delta[~mask])
             plt.plot(c_wavelengths, [0]*len(c_wavelengths))
@@ -223,7 +226,7 @@ def load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_typ
             plt.title("Avg. of KNN,RFR: {}".format(title_str))
             plt.show()
             plt.close()
-        print err_term
+        print err_term, err_sum
         errs[2] = err_term
 
         if save_out:

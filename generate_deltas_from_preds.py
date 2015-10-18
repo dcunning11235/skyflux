@@ -38,9 +38,9 @@ def main():
 
                 delta_mask = (predicted_data['mask_col'] == 'False')
                 #Blue only
-                blue_mask = np.ones((len(delta_mask), ), dtype=int)
-                blue_mask[:2700] = False
-                delta_mask = delta_mask | blue_mask
+                blue_mask = np.zeros((len(delta_mask), ), dtype=bool)
+                blue_mask[2700:] = True
+                delta_mask = (delta_mask | blue_mask)
 
                 rf_err_term = np.sum(np.power(rf_delta[~delta_mask], 2))/len(rf_delta[~delta_mask])
                 rf_err_sum = np.sum(rf_delta[~delta_mask])/len(rf_delta[~delta_mask])
