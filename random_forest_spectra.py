@@ -130,7 +130,7 @@ def load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_typ
     md_len = len(reduced_obs_metadata)
     X_arr = np.array(reduced_obs_metadata).view('f8').reshape((md_len,-1))
 
-    ica = ICAize.unpickle_FastICA(target_type=target_type)
+    ica = ICAize.unpickle_FastICA(path=spectra_path, target_type=target_type)
 
 
     ################################################################
