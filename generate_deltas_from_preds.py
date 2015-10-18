@@ -15,7 +15,7 @@ def main():
     predicted_path = "."
     spec_path = "."
 
-    if len(sys.arv) == 3:
+    if len(sys.argv) == 3:
         predicted_path = sys.argv[1]
         spec_path = sys.argv[2]
 
