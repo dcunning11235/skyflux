@@ -34,7 +34,7 @@ def load_all_spectra_data(path, noncon_file=None, con_file=None):
 
 def load_spectra_data(path, target_type='continuum', filename=None):
     if filename is None:
-        filename = ICAize.data_file.format(target_type)
+        filename = ICAize.ica_data_file.format(target_type)
     npz = np.load(os.path.join(path, filename))
 
     sources = npz['sources']

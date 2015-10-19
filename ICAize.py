@@ -29,6 +29,8 @@ spca_data_file = "spca_{}_sources_and_components.npz"
 ica_pickle_file = "fastica_{}_pickle.pkl"
 spca_pickle_file = "spca_{}_pickle.pkl"
 
+attempt_spca=False
+
 def main():
     path = "."
     mixing_matrix_path = None
@@ -70,9 +72,10 @@ def main():
                     exposures=exposure_arr, wavelengths=wavelengths)
         pickle_SPCA(model, target_type=type_str)
 
-    _spca_reduce_and_save(con_flux_arr, "continuum", ica_continuum_n, con_exposure_arr, wavelengths)
-    _spca_reduce_and_save(flux_arr, "noncontinuum", ica_noncontinuum_n, exposure_arr, wavelengths)
-    _spca_reduce_and_save(comb_flux_arr, "combined", ica_noncontinuum_n, exposure_arr, wavelengths)
+    if attempt_spca:
+        _spca_reduce_and_save(con_flux_arr, "continuum", ica_continuum_n, con_exposure_arr, wavelengths)
+        _spca_reduce_and_save(flux_arr, "noncontinuum", ica_noncontinuum_n, exposure_arr, wavelengths)
+        _spca_reduce_and_save(comb_flux_arr, "combined", ica_noncontinuum_n, exposure_arr, wavelengths)
 
 
 def pickle_FastICA(model, path='.', target_type='continuum', filename=None):
