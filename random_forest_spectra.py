@@ -23,6 +23,7 @@ import os.path
 import sys
 
 rfr_random_state = 456371
+hide_plots=False
 
 def load_all_spectra_data(path, noncon_file=None, con_file=None):
     nc_sources, nc_mixing, noncon_exposures = load_spectra_data(path,
@@ -96,7 +97,7 @@ def main():
             test_inds = range(int(test_inds[1]), int(test_inds[2]))
         else:
             test_inds = [int(test_inds[0])]
-        results = load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_type, no_plot=True, save_out=True, restrict_delta=True)
+        results = load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_type, no_plot=hide_plots, save_out=True, restrict_delta=True)
     '''
     for result in results:
         plt.plot(wavelengths, result)

@@ -21,15 +21,16 @@ ica_max_iter=750
 spca_max_iter = 2500
 
 ica_random_state=1234975
-ica_continuum_n=70
-ica_noncontinuum_n=110
+ica_continuum_n=10
+ica_noncontinuum_n=10
 
 ica_data_file = "fastica_{}_sources_and_mixing.npz"
 spca_data_file = "spca_{}_sources_and_components.npz"
 ica_pickle_file = "fastica_{}_pickle.pkl"
 spca_pickle_file = "spca_{}_pickle.pkl"
 
-attempt_spca=False
+attempt_ica=False
+attempt_spca=True
 
 def main():
     path = "."
@@ -62,9 +63,10 @@ def main():
                     exposures=exposure_arr, wavelengths=wavelengths)
         pickle_FastICA(model, target_type=type_str)
 
-    _ica_reduce_and_save(con_flux_arr, "continuum", ica_continuum_n, con_exposure_arr, wavelengths)
-    _ica_reduce_and_save(flux_arr, "noncontinuum", ica_noncontinuum_n, exposure_arr, wavelengths)
-    _ica_reduce_and_save(comb_flux_arr, "combined", ica_noncontinuum_n, exposure_arr, wavelengths)
+    if attempt_ica:
+        _ica_reduce_and_save(con_flux_arr, "continuum", ica_continuum_n, con_exposure_arr, wavelengths)
+        _ica_reduce_and_save(flux_arr, "noncontinuum", ica_noncontinuum_n, exposure_arr, wavelengths)
+        _ica_reduce_and_save(comb_flux_arr, "combined", ica_noncontinuum_n, exposure_arr, wavelengths)
 
     def _spca_reduce_and_save(flux_arr, type_str, n_components, exposure_arr, wavelengths):
         sources, components, model = reduce_with_spca(flux_arr, n_components)
