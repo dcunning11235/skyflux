@@ -130,41 +130,15 @@ def main():
     obs_md_table.add_column(sunspot_count_col)
     obs_md_table.add_column(sunspot_area_col)
 
-    def _get_separation(start, end, cache=None):
-        if cache is not None:
-            if cache.has_key((start,end)):
-                return cache.get((start,end))
-            else:
-                val = start.separation(end).degree
-                cache[(start,end)] = val
-                return val
-        return start.separation(end).degree
-
-    separation_vectfunc = np.vectorize(_get_separation)
-
-    boresight_ra_dec = ascoord.SkyCoord(ra=obs_md_table['RA'], dec=obs_md_table['DEC'], unit='deg', frame='fk5')
     galactic_core = ascoord.SkyCoord(l=0.0, b=0.0, unit='deg', frame='galactic')
-
-    def _get_galactic_plane_separation(start, cache=None):
-        if cache is not None:
-            if cache.has_key(start):
-                return cache.get(start)
-            else:
-                val = start.transform_to('galactic').b.degree
-                cache[start] = val
-                return val
-        return start.transform_to('galactic').b.degree
-
-    plane_separation_vectfunc = np.vectorize(_get_galactic_plane_separation)
 
     #Join lunar data to the table
     obs_md_table = join(obs_md_table, lunar_md_table['EPHEM_DATE', 'RA_APP', 'DEC_APP', 'MG_APP', 'ELV_APP'])
-    #print obs_md_table
-    cache = {}
-    obs_md_table.add_column(Column(separation_vectfunc(boresight_ra_dec,
-                                        ascoord.SkyCoord(ra=obs_md_table['RA_APP'], dec=obs_md_table['DEC_APP'], unit='deg', frame='icrs'),
-                                        cache),
-                                    dtype=float, name="LUNAR_SEP"))
+
+    lunar_ra_dec = ascoord.SkyCoord(ra=obs_md_table['RA_APP'], dec=obs_md_table['DEC_APP'], unit='deg', frame='icrs')
+    boresight_ra_dec = ascoord.SkyCoord(ra=obs_md_table['RA'], dec=obs_md_table['DEC'], unit='deg', frame='fk5')
+    lunar_seps = boresight_ra_dec.separation(lunar_ra_dec).degree
+    obs_md_table.add_column(Column(lunar_seps, dtype=float, name="LUNAR_SEP"))
 
     obs_md_table.rename_column("MG_APP", "LUNAR_MAGNITUDE")
     obs_md_table.rename_column("ELV_APP", "LUNAR_ELV")
@@ -173,24 +147,20 @@ def main():
 
     #Join solar data to the table
     obs_md_table = join(obs_md_table, solar_md_table['EPHEM_DATE', 'RA_APP', 'DEC_APP', 'ELV_APP'])
-    #print obs_md_table
-    cache = {}
-    obs_md_table.add_column(Column(separation_vectfunc(boresight_ra_dec,
-                                        ascoord.SkyCoord(ra=obs_md_table['RA_APP'], dec=obs_md_table['DEC_APP'], unit='deg', frame='icrs'),
-                                        cache),
-                                    dtype=float, name="SOLAR_SEP"))
+    solar_ra_dec = ascoord.SkyCoord(ra=obs_md_table['RA_APP'], dec=obs_md_table['DEC_APP'], unit='deg', frame='icrs')
+    boresight_ra_dec = ascoord.SkyCoord(ra=obs_md_table['RA'], dec=obs_md_table['DEC'], unit='deg', frame='fk5')
+    solar_seps = boresight_ra_dec.separation(solar_ra_dec).degree
+    obs_md_table.add_column(Column(solar_seps, dtype=float, name="SOLAR_SEP"))
+
     obs_md_table.rename_column("ELV_APP", "SOLAR_ELV")
     obs_md_table.remove_columns(['RA_APP', 'DEC_APP'])
-    #print obs_md_table
 
     #Add in galactic data
-    #Room to improve performance here; since same RA/DEC for many exposures, could
-    #cache galactic core, plane separations.
-    cache = {}
-    obs_md_table.add_column(Column(separation_vectfunc(boresight_ra_dec, galactic_core, cache),
+    boresight_ra_dec = ascoord.SkyCoord(ra=obs_md_table['RA'], dec=obs_md_table['DEC'], unit='deg', frame='fk5')
+    obs_md_table.add_column(Column(boresight_ra_dec.separation(galactic_core).degree,
                                 dtype=float, name="GALACTIC_CORE_SEP"))
-    cache = {}
-    obs_md_table.add_column(Column(plane_separation_vectfunc(boresight_ra_dec, cache),
+    boresight_ra_dec = ascoord.SkyCoord(ra=obs_md_table['RA'], dec=obs_md_table['DEC'], unit='deg', frame='fk5')
+    obs_md_table.add_column(Column(boresight_ra_dec.transform_to('galactic').b.degree,
                                 dtype=float, name="GALACTIC_PLANE_SEP"))
     #print obs_md_table
 
