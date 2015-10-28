@@ -11,6 +11,7 @@ from sklearn import linear_model
 from sklearn import neighbors
 
 from sklearn.decomposition import FastICA
+from sklearn.decomposition import SparsePCA
 from sklearn import preprocessing as skpp
 from sklearn.pipeline import make_pipeline
 from sklearn.cross_decomposition import PLSRegression
@@ -23,23 +24,32 @@ import os.path
 import sys
 
 rfr_random_state = 456371
-hide_plots=False
+hide_plots=True #False
+use_spca=True
 
-def load_all_spectra_data(path, noncon_file=None, con_file=None):
+def load_all_spectra_data(path, noncon_file=None, con_file=None, use_spca=False):
     nc_sources, nc_mixing, noncon_exposures = load_spectra_data(path,
-                                target_type='noncontinuum', filename=noncon_file)
+                                target_type='noncontinuum', filename=noncon_file,
+				use_spca=use_spca)
     c_sources, c_mixing, c_exposures = load_spectra_data(path,
-                                target_type='continuum', filename=con_file)
+                                target_type='continuum', filename=con_file,
+				use_spca=use_spca)
 
     return c_sources, c_mixing, c_exposures, nc_sources, nc_mixing, noncon_exposures
 
-def load_spectra_data(path, target_type='continuum', filename=None):
+def load_spectra_data(path, target_type='continuum', filename=None, use_spca=False):
     if filename is None:
-        filename = ICAize.ica_data_file.format(target_type)
+        if use_spca:
+            filename = ICAize.spca_data_file.format(target_type)
+        else:
+            filename = ICAize.ica_data_file.format(target_type)
     npz = np.load(os.path.join(path, filename))
 
     sources = npz['sources']
-    mixing = npz['mixing']
+    if not use_spca:
+        mixing = npz['mixing']
+    else:
+        mixing = None
     exposures = npz['exposures']
     wavelengths = npz['wavelengths']
 
@@ -55,7 +65,7 @@ def trim_observation_metadata(data, copy=False):
     if copy:
         data = data.copy()
 
-    kept_columns = ['EXP_ID', 'RA', 'DEC', 'AZ', 'ALT', 'AIRMASS',
+    kept_columns = ['EXP_ID', 'RA', 'DEC', 'AZ', 'ALT', 'AIRMASS', #'TIME_BLOCK','WEEK_OF_YEAR',
                     'LUNAR_MAGNITUDE', 'LUNAR_ELV', 'LUNAR_SEP', 'SOLAR_ELV',
                     'SOLAR_SEP', 'GALACTIC_CORE_SEP', 'GALACTIC_PLANE_SEP', 'SS_COUNT', 'SS_AREA']
     removed_columns = [name for name in data.colnames if name not in kept_columns]
@@ -97,7 +107,9 @@ def main():
             test_inds = range(int(test_inds[1]), int(test_inds[2]))
         else:
             test_inds = [int(test_inds[0])]
-        results = load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_type, no_plot=hide_plots, save_out=True, restrict_delta=True)
+        results = load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_type,
+					no_plot=hide_plots, save_out=True, restrict_delta=True,
+					use_spca=use_spca)
     '''
     for result in results:
         plt.plot(wavelengths, result)
@@ -112,9 +124,11 @@ def main():
     print results[3]/len(test_inds)-np.power(results[2]/len(test_inds),2)
 
 
-def load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_type, no_plot=False, save_out=False, restrict_delta=False):
+def load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_type, no_plot=False,
+				save_out=False, restrict_delta=False, use_spca=False):
     obs_metadata = trim_observation_metadata(load_observation_metadata(metadata_path))
-    c_sources, c_mixing, c_exposures, c_wavelengths = load_spectra_data(spectra_path, target_type=target_type)
+    c_sources, c_mixing, c_exposures, c_wavelengths = load_spectra_data(spectra_path,
+						target_type=target_type, use_spca=use_spca)
 
     reduced_obs_metadata = obs_metadata[np.in1d(obs_metadata['EXP_ID'], c_exposures)]
     reduced_obs_metadata.sort('EXP_ID')
@@ -131,8 +145,11 @@ def load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_typ
     md_len = len(reduced_obs_metadata)
     X_arr = np.array(reduced_obs_metadata).view('f8').reshape((md_len,-1))
 
-    ica = ICAize.unpickle_FastICA(path=spectra_path, target_type=target_type)
-
+    ica = None
+    if not use_spca:
+        ica = ICAize.unpickle_FastICA(path=spectra_path, target_type=target_type)
+    else:
+        ica = ICAize.unpickle_SPCA(path=spectra_path, target_type=target_type)
 
     ################################################################
     results = None
@@ -148,7 +165,11 @@ def load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_typ
         knn.fit(X=train_X, y=train_y)
 
         rfr_prediction = rfr.predict(test_X)
-        rfr_predicted_continuum = ica.inverse_transform(rfr_prediction, copy=True)
+        if not use_spca:
+            rfr_predicted_continuum = ica.inverse_transform(rfr_prediction, copy=True)
+        else:
+            rfr_predicted_continuum = np.zeros( (1, ica.components_.shape[1]) )
+            rfr_predicted_continuum[0,:] = np.sum(rfr_prediction.T * ica.components_, 0)
 
         print test_ind, c_exposures[sorted_inds[test_ind]],
 
@@ -192,7 +213,11 @@ def load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_typ
         errs[0] = err_term
 
         knn_prediction = knn.predict(test_X)
-        knn_predicted_continuum = ica.inverse_transform(knn_prediction, copy=True)
+        if not use_spca:
+            knn_predicted_continuum = ica.inverse_transform(knn_prediction, copy=True)
+        else:
+            knn_predicted_continuum = np.zeros( (1, ica.components_.shape[1]) )
+            knn_predicted_continuum[0,:] = np.sum(knn_prediction.T * ica.components_, 0)
 
         if not no_plot:
             plt.plot(c_wavelengths[~mask], knn_predicted_continuum[0][~mask])
