@@ -7,6 +7,7 @@ from astropy.table import vstack
 from astropy.table import join
 
 from sklearn.decomposition import FastICA
+from sklearn.decomposition import PCA
 from sklearn.decomposition import SparsePCA
 from sklearn import preprocessing as skpp
 
@@ -17,20 +18,25 @@ import sys
 import random
 import pickle
 
-ica_max_iter=750
+ica_max_iter = 1000
 spca_max_iter = 2500
+pca_max_iter = 1000
 
 ica_random_state=1234975
-ica_continuum_n=10
-ica_noncontinuum_n=10
+ica_continuum_n=6
+ica_noncontinuum_n=20
 
 ica_data_file = "fastica_{}_sources_and_mixing.npz"
 spca_data_file = "spca_{}_sources_and_components.npz"
+pca_data_file = "pca_{}_sources_and_components.npz"
+
 ica_pickle_file = "fastica_{}_pickle.pkl"
 spca_pickle_file = "spca_{}_pickle.pkl"
+pca_pickle_file = "pca_{}_pickle.pkl"
 
-attempt_ica=False
-attempt_spca=True
+attempt_ica=False #True
+attempt_spca=False #True
+attempt_pca=True #False
 
 def main():
     path = "."
@@ -79,6 +85,19 @@ def main():
         _spca_reduce_and_save(flux_arr, "noncontinuum", ica_noncontinuum_n, exposure_arr, wavelengths)
         _spca_reduce_and_save(comb_flux_arr, "combined", ica_noncontinuum_n, exposure_arr, wavelengths)
 
+    def _pca_reduce_and_save(flux_arr, type_str, n_components, exposure_arr, wavelengths):
+        sources, components, model = reduce_with_pca(flux_arr, n_components)
+        np.savez(pca_data_file.format(type_str), sources=sources, components=components,
+                    exposures=exposure_arr, wavelengths=wavelengths)
+        pickle_PCA(model, target_type=type_str)
+	print model.explained_variance_ratio_, np.sum(model.explained_variance_ratio_)
+
+    if attempt_pca:
+        _pca_reduce_and_save(con_flux_arr, "continuum", ica_continuum_n, con_exposure_arr, wavelengths)
+        _pca_reduce_and_save(flux_arr, "noncontinuum", ica_noncontinuum_n, exposure_arr, wavelengths)
+        _pca_reduce_and_save(comb_flux_arr, "combined", ica_noncontinuum_n, exposure_arr, wavelengths)
+
+
 
 def pickle_FastICA(model, path='.', target_type='continuum', filename=None):
     if filename is None:
@@ -90,6 +109,10 @@ def pickle_FastICA(model, path='.', target_type='continuum', filename=None):
 def pickle_SPCA(model, path='.', target_type='continuum', filename=None):
     pickle_FastICA(model, path, target_type, spca_pickle_file.format(target_type) if filename is None else filename)
 
+def pickle_PCA(model, path='.', target_type='continuum', filename=None):
+    pickle_FastICA(model, path, target_type, pca_pickle_file.format(target_type) if filename is None else filename)
+
+
 def unpickle_FastICA(path='.', target_type='continuum', filename=None):
     if filename is None:
         filename = ica_pickle_file.format(target_type)
@@ -100,7 +123,10 @@ def unpickle_FastICA(path='.', target_type='continuum', filename=None):
     return model
 
 def unpickle_SPCA(path='.', target_type='continuum', filename=None):
-    return unpickle_FastICA(path, target_Type, spca_pickle_file.format(target_type) if filename is None else filename)
+    return unpickle_FastICA(path, target_type, spca_pickle_file.format(target_type) if filename is None else filename)
+
+def unpickle_PCA(path='.', target_type='continuum', filename=None):
+    return unpickle_FastICA(path, target_type, pca_pickle_file.format(target_type) if filename is None else filename)
 
 
 def get_FastICA(target_type='continuum', n=None, mixing=None):
@@ -137,6 +163,19 @@ def get_SPCA(target_type='continuum', n=None):
 
     return None
 
+def get_PCA(target_type='continuum', n=None):
+    if n is not None:
+        return PCA(n_components = n)
+    else:
+        if target_type == 'continuum':
+            return PCA(n_components = ica_continuum_n)
+        elif target_type == 'noncontinuum':
+            return PCA(n_components = ica_noncontinuum_n)
+        elif target_type == 'combined':
+            return PCA(n_components = ica_noncontinuum_n)
+
+    return None
+
 
 
 def reduce_with_ica(flux_arr, n, mixing=None):
@@ -153,6 +192,12 @@ def reduce_with_spca(flux_arr, n):
     sources = spca.fit_transform(flux_arr) #
 
     return sources, spca.components_, spca
+
+def reduce_with_pca(flux_arr, n):
+    pca = get_PCA(n=n)
+    sources = pca.fit_transform(flux_arr) #
+
+    return sources, pca.components_, pca
 
 
 def load_all_in_dir(path, use_con_flux=True, recombine_flux=False):

@@ -10,15 +10,17 @@ import os.path
 import bossdata.spec as bdspec
 from numpy.lib import recfunctions as rfn
 
-def plot_it(data, key, peaks_table=None, no_con_flux=False, unmask=False):
+def plot_it(data, key, peaks_table=None, no_con_flux=False, unmask=False, data_col=None):
     data = Table(data, masked=True)
+    if data_col is None:
+        data_col = 'flux'
     if not unmask:
         if 'ivar' in data.colnames:
             data.mask = [(data['ivar'] == 0) | (np.abs(data['ivar']) <= 0.0001)]*len(data.columns)
         else:
-            data.mask = [(data['flux'] == 0)]*len(data.columns)
+            data.mask = [(data[data_col] == 0)]*len(data.columns)
 
-    val = data['flux']
+    val = data[data_col]
     if 'sky' in data.colnames:
         val += data['sky']
     if 'ivar' in data.colnames:
@@ -56,14 +58,16 @@ path = "."
 pattern = ""
 peaks = None
 key = "wavelength"
+data_col = None
 
 if len(sys.argv) == 4:
     path = sys.argv[1]
     pattern = sys.argv[2]
     peaks = sys.argv[3]
 elif len(sys.argv) == 3:
-    path = sys.argv[1]
-    pattern = sys.argv[2]
+    #path = sys.argv[1]
+    pattern = sys.argv[1]
+    data_col = sys.argv[2]
 else:
     pattern = sys.argv[1]
 
@@ -71,7 +75,7 @@ data_as_is = []
 for file in os.listdir(path):
     if fnmatch.fnmatch(file, pattern):
         data2 = Table.read(os.path.join(path, file), format="ascii")
-        plot_it(data2, key)
+        plot_it(data2, key, data_col=data_col)
         data_as_is.append(data2)
 
         if data is None:
