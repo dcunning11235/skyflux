@@ -56,7 +56,6 @@ def main():
 
     u, s, vh = svd(ivar_arr, full_matrices=True)
 
-    '''
     linear = Linear(fit_intercept=True, copy_X=True)
     poly_linear = Pipeline([('poly', PolynomialFeatures(degree=2)),
                         ('linear', Linear(fit_intercept=True, copy_X=True))])
@@ -70,6 +69,11 @@ def main():
     mse = mean_squared_error(flux_arr_test, plin_predictions)
     print mse
 
+    del lin_predictions
+    del plin_predictions
+    del linear
+    del poly_linear
+
     ridge = RidgeCV()
     poly_ridge = Pipeline([('poly', PolynomialFeatures(degree=2)),
                         ('ridge', RidgeCV())])
@@ -82,7 +86,11 @@ def main():
     pridge_predictions = poly_ridge.predict(X_arr_test)
     mse = mean_squared_error(flux_arr_test, pridge_predictions)
     print mse
-    '''
+
+    del ridge_predictions
+    del pridge_predictions
+    del ridge
+    del poly_ridge
 
     lasso = LassoCV(n_jobs=-1)
     poly_lasso = Pipeline([('poly', PolynomialFeatures(degree=2)),
@@ -97,6 +105,11 @@ def main():
     mse = mean_squared_error(flux_arr_test, plasso_predictions)
     print mse
 
+    del lasso_predictions
+    del plasso_predictions
+    del lasso
+    del poly_lasso
+
     elastic = ElasticNetCV(n_jobs=-1)
     poly_elastic = Pipeline([('poly', PolynomialFeatures(degree=2)),
                         ('elastic', ElasticNetCV(n_jobs=-1))])
@@ -109,6 +122,11 @@ def main():
     pelastic_predictions = poly_elastic.predict(X_arr_test)
     mse = mean_squared_error(flux_arr_test, pelastic_predictions)
     print mse
+
+    del elastic_predictions
+    del pelastic_predictions
+    del elastic
+    del poly_elastic
 
     pls = PLS(n_components=8)
     pls_predictions = pls.predict(X_arr_test)
