@@ -205,12 +205,14 @@ def load_all_in_dir(path, use_con_flux=True, recombine_flux=False):
     flux_list = []
     exp_list = []
     mask_list = []
+    ivar_list = []
     wavelengths = None
 
     for file in os.listdir(path):
         if fnmatch.fnmatch(file, pattern):
             data = Table(Table.read(os.path.join(path, file), format="ascii.csv"), masked=True)
             mask = data['ivar'] == 0
+            ivar_list.append(np.array(data['ivar'], copy=False))
 
             exp = int(file.split("-")[2][3:])
 
@@ -228,8 +230,9 @@ def load_all_in_dir(path, use_con_flux=True, recombine_flux=False):
     flux_arr = np.array(flux_list)
     exp_arr = np.array(exp_list)
     mask_arr = np.array(mask_list)
+    ivar_arr = np.array(ivar_list)
 
-    return flux_arr, exp_arr, mask_arr, wavelengths
+    return flux_arr, exp_arr, ivar_arr, mask_arr, wavelengths
 
 if __name__ == '__main__':
     main()
