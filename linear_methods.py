@@ -23,7 +23,7 @@ from sklearn.linear_model import RANSACRegressor as RANSAC
 #from sklearn.gaussian_process import GaussianProcess as GaussianProcess
 
 from sklearn.cross_validation import train_test_split
-from sklearn.cross_validation import PredefinedSplit
+#from sklearn.cross_validation import PredefinedSplit
 from sklearn.metrics import mean_squared_error
 
 from scipy.linalg import svd
@@ -44,6 +44,8 @@ spectra_path = "."
 try_weighted = False
 subtract_mean = False #True
 
+restrict_delta = True
+
 def main():
     obs_metadata = trim_observation_metadata(load_observation_metadata(metadata_path))
     flux_arr, exp_arr, ivar_arr, mask_arr, wavelengths = load_all_in_dir(spectra_path, recombine_flux=True)
@@ -56,57 +58,49 @@ def main():
 
     X_arr = np.array(reduced_obs_metadata).view('f8').reshape((md_len,-1))
 
+    '''
     test_fold = np.zeros((X_arr.shape[0], ), dtype=int)
     test_fold[600:]=1
-    ps = PredifinedSplit(test_fold=test_fold)
+    ps = PredefinedSplit(test_fold=test_fold)
     print len(ps)
+    '''
 
-    if not try_weighted:
-        X_arr_train, X_arr_test, flux_arr_train, flux_arr_test, ivar_train, ivar_test = \
-            train_test_split(X_arr, flux_arr[sorted_inds], ivar_arr[sorted_inds], test_size=0.15)
-
-    if try_weighted:
-        ivar_sqrt = np.sqrt(ivar_arr)
-        u, s, vh = svd(np.dot(ivar_sqrt, np.transpose(ivar_sqrt)), full_matrices=True)
-        uh = np.transpose(u) #These are real matracies... or they better be.
-        v = np.transpose(vh)
-        X_arr_prime = np.dot(u, X_arr)
-        flux_arr_prime = np.dot(np.dot(uh, flux_arr), v)
-
-        X_arr_train, X_arr_test, flux_arr_train, flux_arr_test, ivar_train, ivar_test = \
-            train_test_split(X_arr_prime, flux_arr_prime[sorted_inds], ivar_arr[sorted_inds], test_size=0.15)
-
-    if subtract_mean:
-        average_flux = np.zeros(flux_arr_train.shape[1])
-        ivar_sums = np.sum(ivar_train, 0)
-        ivar_train[:,np.where(ivar_sums==0)] = 1
-
-        average_flux = np.average(flux_arr_train, 0, ivar_train)
-        average_flux[np.where(ivar_sums==0)] = 0
-        ivar_train[:,np.where(ivar_sums==0)] = 0
-
-        flux_arr_train[:] =- average_flux
-
+    test_inds = range(0, 600)
     linear = Linear(fit_intercept=True, copy_X=True, n_jobs=-1)
     poly_linear = Pipeline([('poly', PolynomialFeatures(degree=2)),
                         ('linear', Linear(fit_intercept=True, copy_X=True, n_jobs=-1))])
-    linear.fit(X_arr_train, flux_arr_train)
-    poly_linear.fit(X_arr_train, flux_arr_train)
 
-    lin_predictions = linear.predict(X_arr_test)
-    if subtract_mean:
-        lin_predictions[:] =+ average_flux
-    if try_weighted:
-        lin_predictions = np.dot(np.dot(u, lin_predictions), vh)
-    mse = mean_squared_error(flux_arr_test, lin_predictions)
-    print mse
-    plin_predictions = poly_linear.predict(X_arr_test)
-    if subtract_mean:
-        plin_predictions[:] =+ average_flux
-    if try_weighted:
-        plin_predictions = np.dot(np.dot(u, plin_predictions), vh)
-    mse = mean_squared_error(flux_arr_test, plin_predictions)
-    print mse
+
+    for test_ind in test_inds:
+        test_X = X_arr[test_ind]
+        train_X = np.vstack( [X_arr[:test_ind], X_arr[test_ind+1:]] )
+        test_y =  (flux_arr[sorted_inds])[test_ind]
+        train_y = np.vstack( [(flux_arr[sorted_inds])[:test_ind], (flux_arr[sorted_inds])[test_ind+1:]] )
+
+        linear.fit(train_X, train_y)
+        poly_linear.fit(train_X, train_y)
+
+        lin_predictions = linear.predict(test_X)[0]
+        plin_predictions = poly_linear.predict(test_X)[0]
+
+        mask = (ivar_arr[test_ind] == 0) | np.isclose(lin_predictions, 0)
+        if restrict_delta:
+            delta_mask = mask.copy()
+            delta_mask[:2700] = True
+        else:
+            delta_mask = mask
+
+        lin_delta = lin_predictions - test_y
+        err_term = np.sum(np.power(lin_delta[~delta_mask], 2))/len(wavelengths[~delta_mask])
+        err_sum = np.sum(lin_delta[~delta_mask])/len(lin_delta[~delta_mask])
+        print err_term, err_sum,
+
+        plin_delta = plin_predictions - test_y
+        err_term = np.sum(np.power(plin_delta[~delta_mask], 2))/len(wavelengths[~delta_mask])
+        err_sum = np.sum(plin_delta[~delta_mask])/len(plin_delta[~delta_mask])
+        print err_term, err_sum
+
+
 
     '''
     ransac = RANSAC()
