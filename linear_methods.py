@@ -48,7 +48,9 @@ restrict_delta = True
 
 def main():
     obs_metadata = trim_observation_metadata(load_observation_metadata(metadata_path))
-    flux_arr, exp_arr, ivar_arr, mask_arr, wavelengths = load_all_in_dir(spectra_path, recombine_flux=True)
+    flux_arr, exp_arr, ivar_arr, mask_arr, wavelengths = \
+                load_all_in_dir(spectra_path, use_con_flux=False, recombine_flux=False,
+                                pattern="stacked*exp??????.csv", ivar_cutoff=0.001)
 
     sorted_inds = np.argsort(exp_arr)
 
@@ -65,7 +67,7 @@ def main():
     print len(ps)
     '''
 
-    test_inds = range(0, 600)
+    test_inds = range(0, 50)
     linear = Linear(fit_intercept=True, copy_X=True, n_jobs=-1)
     poly_linear = Pipeline([('poly', PolynomialFeatures(degree=2)),
                         ('linear', Linear(fit_intercept=True, copy_X=True, n_jobs=-1))])

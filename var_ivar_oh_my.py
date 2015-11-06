@@ -7,7 +7,8 @@ spectra_path = "."
 
 def main():
     flux_arr, exp_arr, ivar_arr, mask_arr, wavelengths = \
-        load_all_in_dir(spectra_path, recombine_flux=True)
+        load_all_in_dir(spectra_path, use_con_flux=False, recombine_flux=False,
+                        pattern="stacked*exp??????.csv")
     t = Table()
 
     t["wavelengths"] = wavelengths
@@ -28,7 +29,11 @@ def main():
 
     flux_stdev_per_wl = np.std(flux_arr, axis=0)
     t["flux_stdev_per_wl"] = flux_stdev_per_wl
+
+    invalid_per_wl_mask = (flux_stdev_per_wl == 0)
+    flux_stdev_per_wl[invalid_per_wl_mask] == 1
     t["flux_derived_ivar_per_wl"] = np.power(flux_stdev_per_wl, -2)
+    flux_stdev_per_wl[invalid_per_wl_mask] == 0
     t["flux_derived_ivar_per_wl"][invalid_per_wl_mask] = 0
 
     t.write("flux_stats.csv", format="ascii.csv")

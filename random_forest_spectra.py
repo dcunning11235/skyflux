@@ -166,10 +166,10 @@ def load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_typ
 
         rfr_prediction = rfr.predict(test_X)
         if not use_spca:
-            rfr_predicted_continuum = ica.inverse_transform(rfr_prediction, copy=True)
+            rfr_predicted = ica.inverse_transform(rfr_prediction, copy=True)
         else:
-            rfr_predicted_continuum = np.zeros( (1, ica.components_.shape[1]) )
-            rfr_predicted_continuum[0,:] = np.sum(rfr_prediction.T * ica.components_, 0)
+            rfr_predicted = np.zeros( (1, ica.components_.shape[1]) )
+            rfr_predicted[0,:] = np.sum(rfr_prediction.T * ica.components_, 0)
 
         print test_ind, c_exposures[sorted_inds[test_ind]],
 
@@ -179,7 +179,8 @@ def load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_typ
         delta_mask = None
 
         for file in os.listdir(spectra_path):
-            if fnmatch.fnmatch(file, "stacked_sky_*exp{}-continuum.csv".format(c_exposures[sorted_inds[test_ind]])):
+            #if fnmatch.fnmatch(file, "stacked_sky_*exp{}-continuum.csv".format(c_exposures[sorted_inds[test_ind]])):
+            if fnmatch.fnmatch(file, "stacked_sky_*exp{}.csv".format(c_exposures[sorted_inds[test_ind]])):
                 data = Table.read(os.path.join(spectra_path, file), format="ascii.csv")
                 mask = (data['ivar'] == 0) | np.isclose(rfr_predicted_continuum[0], 0)
                 if restrict_delta:
@@ -189,14 +190,16 @@ def load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_typ
                     delta_mask = mask
 
                 actual = data['flux']
+                '''
                 if target_type == 'continuum':
                     actual = data['con_flux']
                 elif target_type == 'combined':
                     actual += data['con_flux']
+                '''
 
-                rfr_delta = rfr_predicted_continuum[0] - actual
+                rfr_delta = rfr_predicted[0] - actual
                 if not no_plot:
-                    plt.plot(c_wavelengths[~mask], rfr_predicted_continuum[0][~mask])
+                    plt.plot(c_wavelengths[~mask], rfr_predicted[0][~mask])
                     plt.plot(c_wavelengths[~mask], actual[~mask])
                     plt.plot(c_wavelengths[~mask], rfr_delta[~mask])
         if not no_plot:
@@ -214,15 +217,15 @@ def load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_typ
 
         knn_prediction = knn.predict(test_X)
         if not use_spca:
-            knn_predicted_continuum = ica.inverse_transform(knn_prediction, copy=True)
+            knn_predicted = ica.inverse_transform(knn_prediction, copy=True)
         else:
-            knn_predicted_continuum = np.zeros( (1, ica.components_.shape[1]) )
-            knn_predicted_continuum[0,:] = np.sum(knn_prediction.T * ica.components_, 0)
+            knn_predicted = np.zeros( (1, ica.components_.shape[1]) )
+            knn_predicted[0,:] = np.sum(knn_prediction.T * ica.components_, 0)
 
         if not no_plot:
-            plt.plot(c_wavelengths[~mask], knn_predicted_continuum[0][~mask])
+            plt.plot(c_wavelengths[~mask], knn_predicted[0][~mask])
             plt.plot(c_wavelengths[~mask], actual[~mask])
-        knn_delta = knn_predicted_continuum[0] - actual
+        knn_delta = knn_predicted[0] - actual
         err_term = np.sum(np.power(knn_delta[~delta_mask], 2))/len(c_wavelengths[~delta_mask])
         err_sum = np.sum(knn_delta[~delta_mask])/len(knn_delta[~delta_mask])
         if not no_plot:
@@ -236,12 +239,12 @@ def load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_typ
         print err_term, err_sum,
         errs[1] = err_term
 
-        avg_predicted_continuum = (knn_predicted_continuum + rfr_predicted_continuum)/2
+        avg_predicted = (knn_predicted + rfr_predicted)/2
 
         if not no_plot:
-            plt.plot(c_wavelengths[~mask], avg_predicted_continuum[0][~mask])
+            plt.plot(c_wavelengths[~mask], avg_predicted[0][~mask])
             plt.plot(c_wavelengths[~mask], actual[~mask])
-        avg_delta = avg_predicted_continuum[0] - actual
+        avg_delta = avg_predicted[0] - actual
         err_term = np.sum(np.power(avg_delta[~delta_mask], 2))/len(c_wavelengths[~delta_mask])
         err_sum = np.sum(avg_delta[~delta_mask])/len(avg_delta[~delta_mask])
         if not no_plot:
@@ -258,9 +261,9 @@ def load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_typ
         if save_out:
             out_table = Table()
             wavelength_col = Column(c_wavelengths, name="wavelength", dtype=float)
-            rf_col = Column(rfr_predicted_continuum[0], name="rf_flux", dtype=float)
-            knn_col = Column(knn_predicted_continuum[0], name="knn_flux", dtype=float)
-            avg_col = Column(avg_predicted_continuum[0], name="avg_flux", dtype=float)
+            rf_col = Column(rfr_predicted[0], name="rf_flux", dtype=float)
+            knn_col = Column(knn_predicted[0], name="knn_flux", dtype=float)
+            avg_col = Column(avg_predicted[0], name="avg_flux", dtype=float)
             mask_col = Column(~mask, name="mask_col", dtype=bool)
             out_table.add_columns([wavelength_col, rf_col, knn_col, avg_col, mask_col])
             out_table.write("predicted_sky_exp{}.csv".format(c_exposures[sorted_inds[test_ind]]), format="ascii.csv")
