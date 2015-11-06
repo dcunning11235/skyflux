@@ -2,6 +2,8 @@
 from ICAize import load_all_in_dir
 import numpy as np
 from astropy.table import Table
+from scipy.stats import kurtosis
+
 
 spectra_path = "."
 
@@ -19,6 +21,8 @@ def main():
 
     t["ivar_avg_per_wl"] = np.mean(ivar_arr, axis=0)
     t["ivar_stdev_per_wl"] = np.std(ivar_arr, axis=0)
+    t["ivar_kurtosis_per_wl"] = kurtosis(ivar_arr, axis=0, bias=False)
+    t["ivar_kurtosis_per_wl"][invalid_per_wl_mask] = 0
 
     t["flux_flat_avg_per_wl"] = np.mean(flux_arr, axis=0)
 
@@ -35,6 +39,11 @@ def main():
     t["flux_derived_ivar_per_wl"] = np.power(flux_stdev_per_wl, -2)
     flux_stdev_per_wl[invalid_per_wl_mask] == 0
     t["flux_derived_ivar_per_wl"][invalid_per_wl_mask] = 0
+
+    invalid_per_wl_mask = (valid_per_wl == 0)
+    flux_kurtosis_per_wl = kurtosis(flux_arr, axis=0, bias=False)
+    flux_kurtosis_per_wl[invalid_per_wl_mask] = 0
+    t["flux_kurtosis_per_wl"] = flux_kurtosis_per_wl
 
     t.write("flux_stats.csv", format="ascii.csv")
 
