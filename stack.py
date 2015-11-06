@@ -83,8 +83,8 @@ def stack_exposures(fiber_group, exposure=None, use_cframe=False):
 
     if len(exposure_list) == 0:
         if exposure is None:
-            print spec.exposures.table, "--------------", spec.exposures.table['science'][0:(spec.num_exposures/2)]
-            exposure_list = spec.exposures.table['science'][0:(spec.num_exposures/2)]
+            #print spec.exposures.table, "--------------", spec.exposures.table['science'][0:(spec.num_exposures)]
+            exposure_list = spec.exposures.table['science'][0:(spec.num_exposures)]
         elif hasattr(exposure, '__iter__'):
             exposure_list.extend(exposure)
         else:
@@ -111,6 +111,7 @@ def stack_exposures(fiber_group, exposure=None, use_cframe=False):
             data = frame.get_valid_data(fiber_list, pixel_quality_mask=allowed_bitmask, include_sky=True, use_ivar=True)
             data['flux'] += data['sky']
 
+            '''
             flag_arr = np.sum(data['flux'] < -0.5, 1)
             print flag_arr
             if np.any(flag_arr > 0):
@@ -121,6 +122,7 @@ def stack_exposures(fiber_group, exposure=None, use_cframe=False):
                 if np.any(data['flux'] < -50):
                     flag_arr = np.sum(data['flux'] < -50, 1)
                     print "*********FOUND IT:", fiber_list[flag_arr]
+            '''
             return data
 
         for i, exp in enumerate(exposure_list):
@@ -261,6 +263,7 @@ def save_stacks(stacks, fiber_group, exposures, save_clean=True):
     plate = fiber_group[0]['PLATE']
     mjd = fiber_group[0]['MJD']
     for stackedexp, exp in zip(stacks, exposures):
+        '''
         flag_arr = (stackedexp['flux'] < -0.5)
         if np.any(flag_arr):
             print "GOT NEGATIVE SKY FLUX IN FINAL STACK!!!!"
@@ -268,7 +271,7 @@ def save_stacks(stacks, fiber_group, exposures, save_clean=True):
             print stackedexp['wavelength'][flag_arr]
             print stackedexp['flux'][flag_arr]
             #Should put in ivar cutoff here.  Like any ivar < 0.001 is excluded, regardless of flux value
-
+        '''
         exp_table = Table(data=stackedexp)
         exp_table.write("stacked_sky_{}-{}-exp{:02d}.csv".format(plate, mjd, exp), format="ascii.csv")
 
