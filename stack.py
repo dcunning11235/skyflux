@@ -21,7 +21,6 @@ from scipy.signal import find_peaks_cwt
 from scipy.signal import general_gaussian
 from scipy.signal import fftconvolve
 from scipy.signal import argrelextrema
-#from pydl.pydlspec2d.spec2d import combine1fiber
 
 from progressbar import ProgressBar, Percentage, Bar
 
@@ -55,7 +54,7 @@ skyexp_loglam_start = 3.5441
 skyexp_loglam_delta = 0.00006675
 skyexp_loglam_out = np.arange(skyexp_loglam_start, 4.01716, skyexp_loglam_delta)
 
-allowed_bitmask = bdbits.bitmask_from_text(bdbits.SPPIXMASK, "BRIGHTSKY|BADSKYCHI|NOSKY")
+allowed_bitmask = bdbits.bitmask_from_text(bdbits.SPPIXMASK, "BRIGHTSKY|BADSKYCHI") #|NOSKY")
 pin_peaks = [4358.9, 5200.3, 5462.6, 5578.5]
 pin_peaks_dtype = [('fiber', 'i4'), ('exposure', 'i4')]
 for i in pin_peaks:
@@ -84,6 +83,7 @@ def stack_exposures(fiber_group, exposure=None, use_cframe=False):
 
     if len(exposure_list) == 0:
         if exposure is None:
+            print spec.exposures.table, "--------------", spec.exposures.table['science'][0:(spec.num_exposures/2)]
             exposure_list = spec.exposures.table['science'][0:(spec.num_exposures/2)]
         elif hasattr(exposure, '__iter__'):
             exposure_list.extend(exposure)
@@ -110,6 +110,17 @@ def stack_exposures(fiber_group, exposure=None, use_cframe=False):
                                         1 if fiber_list[0] <= 500 else 2, use_calibrated)
             data = frame.get_valid_data(fiber_list, pixel_quality_mask=allowed_bitmask, include_sky=True, use_ivar=True)
             data['flux'] += data['sky']
+
+            flag_arr = np.sum(data['flux'] < -0.5, 1)
+            print flag_arr
+            if np.any(flag_arr > 0):
+                print "GOT NEGATIVE SKY FLUX!!!!"
+                print fiber_group['PLATE'][0], exposure
+                #print fiber_list[np.where(flag_arr > 0)][:]
+
+                if np.any(data['flux'] < -50):
+                    flag_arr = np.sum(data['flux'] < -50, 1)
+                    print "*********FOUND IT:", fiber_list[flag_arr]
             return data
 
         for i, exp in enumerate(exposure_list):
@@ -250,6 +261,14 @@ def save_stacks(stacks, fiber_group, exposures, save_clean=True):
     plate = fiber_group[0]['PLATE']
     mjd = fiber_group[0]['MJD']
     for stackedexp, exp in zip(stacks, exposures):
+        flag_arr = (stackedexp['flux'] < -0.5)
+        if np.any(flag_arr):
+            print "GOT NEGATIVE SKY FLUX IN FINAL STACK!!!!"
+            print plate, mjd, exp
+            print stackedexp['wavelength'][flag_arr]
+            print stackedexp['flux'][flag_arr]
+            #Should put in ivar cutoff here.  Like any ivar < 0.001 is excluded, regardless of flux value
+
         exp_table = Table(data=stackedexp)
         exp_table.write("stacked_sky_{}-{}-exp{:02d}.csv".format(plate, mjd, exp), format="ascii.csv")
 
@@ -291,6 +310,7 @@ def main():
         #all_pins = []
         for group in sky_fibers_table.groups:
             exposures, stacks, pin_peaks = stack_exposures(group, use_cframe=True)
+
             save_stacks(stacks, group, exposures)
 
             save_pins(pin_peaks, group)
