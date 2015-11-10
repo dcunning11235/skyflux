@@ -34,8 +34,8 @@ use_spca=False #True
 
 include_linear = True
 linear_only = True
-order_3 = False
-order_4 = False
+order_3 = True
+order_4 = True #False
 
 def load_all_spectra_data(path, noncon_file=None, con_file=None, use_spca=False):
     nc_sources, nc_mixing, noncon_exposures = load_spectra_data(path,
@@ -336,6 +336,8 @@ def load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_typ
                 err_sum = np.sum(poly_4_delta[~delta_mask])/len(poly_4_delta[~delta_mask])
                 print err_term, err_sum,
                 errs[6] = err_term
+
+        print
 
         if save_out:
             out_table = Table()
