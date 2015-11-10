@@ -44,7 +44,8 @@ def main():
     if len(sys.argv) == 2:
         path = sys.argv[1]
     if len(sys.argv) == 3:
-        mixing_matrix_path = sys.argv[2]
+        ica_continuum_n = int(sys.argv[2])
+        ica_noncontinuum_n = ica_continuum_n
 
     '''
     con_flux_arr, con_exposure_arr, con_masks, con_wavelengths = load_all_in_dir(path,

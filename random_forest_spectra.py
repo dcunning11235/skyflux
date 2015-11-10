@@ -134,7 +134,7 @@ def load_plot_etc_target_type(metadata_path, spectra_path, test_inds, target_typ
     errs = np.zeros((7,), dtype=float)
 
     if not linear_only:
-        rfr = ensemble.RandomForestRegressor(n_estimators=200, min_samples_split=1,
+        rfr = ensemble.RandomForestRegressor(n_estimators=300, min_samples_split=1,
                         random_state=rfr_random_state, n_jobs=-1, verbose=False)
         knn = neighbors.KNeighborsRegressor(weights='distance', n_neighbors=10, p=64)
 
