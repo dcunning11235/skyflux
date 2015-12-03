@@ -13,11 +13,14 @@ def main():
 
     t["exp_id"] = exp_arr
 
-    t["flux_flat_avg__blue"] = np.mean(flux_arr[:,:2700], axis=1)
-    t["flux_flat_avg__red"] = np.mean(flux_arr[:,2700:], axis=1)
+    t["flux_flat_avg__blue"] = np.mean(flux_arr[:,:2700][mask_arr[:,:2700]], axis=1)
+    t["flux_flat_avg__red"] = np.mean(flux_arr[:,2700:][mask_arr[:,2700:]], axis=1)
 
     t["flux_weighted_avg__blue"] = np.average(flux_arr[:,:2700], axis=1, weights=ivar_arr[:,:2700])
     t["flux_weighted_avg__red"] = np.average(flux_arr[:,2700:], axis=1, weights=ivar_arr[:,2700:])
+
+    t["flux_median__blue"] = np.median(flux_arr[:,:2700][mask_arr[:,:2700]], axis=1)
+    t["flux_median__red"] = np.median(flux_arr[:,2700:][mask_arr[:,2700:]], axis=1)
 
     t.write("flux_averages.csv", format="ascii.csv")
 
