@@ -18,200 +18,98 @@ import sys
 import random
 import pickle
 
-ica_max_iter = 1000
-spca_max_iter = 2500
-pca_max_iter = 1000
+from astropy.utils.compat import argparse
 
-ica_random_state=1234975
-ica_continuum_n=8
-ica_noncontinuum_n=8
+random_state=1234975
 
-ica_data_file = "fastica_{}_sources_and_mixing.npz"
-spca_data_file = "spca_{}_sources_and_components.npz"
-pca_data_file = "pca_{}_sources_and_components.npz"
-
-ica_pickle_file = "fastica_{}_pickle.pkl"
-spca_pickle_file = "spca_{}_pickle.pkl"
-pca_pickle_file = "pca_{}_pickle.pkl"
-
-attempt_ica=True
-attempt_spca=False #True
-attempt_pca=False
+data_file = "{}_sources_and_mixing.npz"
+pickle_file = "{}_pickle.pkl"
 
 def main():
-    path = "."
-    mixing_matrix_path = None
-    if len(sys.argv) == 2:
-        path = sys.argv[1]
-    if len(sys.argv) == 3:
-        ica_continuum_n = int(sys.argv[2])
-        ica_noncontinuum_n = ica_continuum_n
-
-    '''
-    con_flux_arr, con_exposure_arr, con_masks, con_wavelengths = load_all_in_dir(path,
-                                                    use_con_flux=True, recombine_flux=False)
-    flux_arr, exposure_arr, masks, wavelengths = load_all_in_dir(path, use_con_flux=False,
-                                                    recombine_flux=False)
-    comb_flux_arr, comb_exposure_arr, comb_masks, comb_wavelengths = \
-        con_flux_arr + flux_arr, con_exposure_arr[:], con_masks[:], con_wavelengths[:]
-    '''
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description='Compute ICA components over set of stacked spectra, save those out, and pickle ICA model')
+    parser.add_argument(
+        '--pattern', type=str, default='stacked*exp??????.*', metavar='PATTERN',
+        help='File pattern for stacked sky fibers.'
+    )
+    parser.add_argument(
+        '--path', type=str, default='.', metavar='PATH',
+        help='Path to work from, if not ''.'''
+    )
+    parser.add_argument(
+        '--n_components', type=int, default=40, metavar='N_COMPONENTS',
+        help='Number of ICA/PCA/etc. components'
+    )
+    parser.add_argument(
+        '--method', type=str, default='ICA', metavar='METHOD', choices=['ICA', 'PCA', 'SPCA', 'NMF']
+        help='Which dim. reduction method to use'
+    )
+    parser.add_argument(
+        '--ivar_cutoff', type=float, default=0.001, metavar='IVAR_CUTOFF',
+        help='data with inverse variace below cutoff is masked as if ivar==0'
+    )
+    parser.add_argument(
+        '--max_iter', type=int, default=1200, metavar='MAX_ITER',
+        help='Maximum number of iterations to allow for convergence.  For SDSS data 1000 is a safe number of ICA, while SPCA requires larger values e.g. ~2000 to ~2500'
+    )
+    args = parser.parse_args()
 
     comb_flux_arr, comb_exposure_arr, comb_ivar_arr, comb_masks, comb_wavelengths = \
-                load_all_in_dir(path, use_con_flux=False, recombine_flux=False,
-                                pattern="stacked*exp??????.csv", ivar_cutoff=0.001)
+                load_all_in_dir(args.path, use_con_flux=False, recombine_flux=False,
+                                pattern=args.pattern, ivar_cutoff=args.ivar_cutoff)
 
-
-    #mask_summed = np.sum(con_masks, axis=0)
     mask_summed = np.sum(comb_masks, axis=0)
-
     min_val_ind = np.min(np.where(mask_summed == 0))
     max_val_ind = np.max(np.where(mask_summed == 0))
-    print min_val_ind, max_val_ind
+    print "For data set, minimum and maximum valid indecies are:", (min_val_ind, max_val_ind)
 
-    '''
-    for i in range(con_flux_arr.shape[0]):
-        con_flux_arr[i,:min_val_ind] = 0
-        con_flux_arr[i,max_val_ind+1:] = 0
-    '''
+    sources, components, model = dim_reduce(flux_arr, args.n_components, args.method, args.max_iter, random_state)
+    np.savez(data_file.format(args.method), sources=sources, components=components,
+                exposures=comb_exposure_arr, wavelengths=comb_wavelengths)
+    pickle(model, args.path, args.method)
 
-    def _ica_reduce_and_save(flux_arr, type_str, n_components, exposure_arr, wavelengths):
-        sources, mixing, model = reduce_with_ica(flux_arr, n_components)
-        np.savez(ica_data_file.format(type_str), sources=sources, mixing=mixing,
-                    exposures=exposure_arr, wavelengths=wavelengths)
-        pickle_FastICA(model, target_type=type_str)
-
-    if attempt_ica:
-        #_ica_reduce_and_save(con_flux_arr, "continuum", ica_continuum_n, con_exposure_arr, wavelengths)
-        #_ica_reduce_and_save(flux_arr, "noncontinuum", ica_noncontinuum_n, exposure_arr, wavelengths)
-        _ica_reduce_and_save(comb_flux_arr, "combined", ica_noncontinuum_n, comb_exposure_arr, comb_wavelengths)
-
-    def _spca_reduce_and_save(flux_arr, type_str, n_components, exposure_arr, wavelengths):
-        sources, components, model = reduce_with_spca(flux_arr, n_components)
-        np.savez(spca_data_file.format(type_str), sources=sources, components=components,
-                    exposures=exposure_arr, wavelengths=wavelengths)
-        pickle_SPCA(model, target_type=type_str)
-
-    if attempt_spca:
-        #_spca_reduce_and_save(con_flux_arr, "continuum", ica_continuum_n, con_exposure_arr, wavelengths)
-        #_spca_reduce_and_save(flux_arr, "noncontinuum", ica_noncontinuum_n, exposure_arr, wavelengths)
-        _spca_reduce_and_save(comb_flux_arr, "combined", ica_noncontinuum_n, comb_exposure_arr, comb_wavelengths)
-
-    def _pca_reduce_and_save(flux_arr, type_str, n_components, exposure_arr, wavelengths):
-        sources, components, model = reduce_with_pca(flux_arr, n_components)
-        np.savez(pca_data_file.format(type_str), sources=sources, components=components,
-                    exposures=exposure_arr, wavelengths=wavelengths)
-        pickle_PCA(model, target_type=type_str)
-	print model.explained_variance_ratio_, np.sum(model.explained_variance_ratio_)
-
-    if attempt_pca:
-        #_pca_reduce_and_save(con_flux_arr, "continuum", ica_continuum_n, con_exposure_arr, wavelengths)
-        #_pca_reduce_and_save(flux_arr, "noncontinuum", ica_noncontinuum_n, exposure_arr, wavelengths)
-        _pca_reduce_and_save(comb_flux_arr, "combined", ica_noncontinuum_n, comb_exposure_arr, comb_wavelengths)
-
-
-
-def pickle_FastICA(model, path='.', target_type='continuum', filename=None):
+def pickle(model, path='.', method='ICA', filename=None):
     if filename is None:
-        filename = ica_pickle_file.format(target_type)
+        filename = pickle_file.format(method)
+
     output = open(os.path.join(path, filename), 'wb')
     pickle.dump(model, output)
     output.close()
 
-def pickle_SPCA(model, path='.', target_type='continuum', filename=None):
-    pickle_FastICA(model, path, target_type, spca_pickle_file.format(target_type) if filename is None else filename)
-
-def pickle_PCA(model, path='.', target_type='continuum', filename=None):
-    pickle_FastICA(model, path, target_type, pca_pickle_file.format(target_type) if filename is None else filename)
-
-
-def unpickle_FastICA(path='.', target_type='continuum', filename=None):
+def unpickle(path='.', method='ICA', filename=None):
     if filename is None:
-        filename = ica_pickle_file.format(target_type)
+        filename = pickle_file.format(method)
     output = open(os.path.join(path, filename), 'rb')
     model = pickle.load(output)
     output.close()
 
     return model
 
-def unpickle_SPCA(path='.', target_type='continuum', filename=None):
-    return unpickle_FastICA(path, target_type, spca_pickle_file.format(target_type) if filename is None else filename)
+def dim_reduce(flux_arr, n, method, max_iter, random_state):
+    model = None
 
-def unpickle_PCA(path='.', target_type='continuum', filename=None):
-    return unpickle_FastICA(path, target_type, pca_pickle_file.format(target_type) if filename is None else filename)
+    if method == 'ICA':
+        model = FastICA(n_components = n, whiten=True, max_iter=max_iter,
+                        random_state=random_state, w_init=mixing)
+    elif method == 'PCA':
+        model = PCA(n_components = n)
+    elif method == 'SPCA':
+        model = SparsePCA(n_components = n, max_iter=max_iter,
+                        random_state=random_state, n_jobs=-1)
+    elif method == 'NMF':
+        model = NMF(n_components = n, solver='cd', max_iter=max_iter,
+                    random_state=random_state)
 
-
-def get_FastICA(target_type='continuum', n=None, mixing=None):
-    if n is not None:
-        return FastICA(n_components = n, whiten=True, max_iter=ica_max_iter,
-                        random_state=ica_random_state, w_init=mixing)
+    sources = model.fit_transform(flux_arr)
+    if method == 'ICA':
+        components_ = model.mixing_
     else:
-        if target_type == 'continuum':
-            return FastICA(n_components = ica_continuum_n, whiten=True, max_iter=ica_max_iter,
-                        random_state=ica_random_state, w_init=mixing)
-        elif target_type == 'noncontinuum':
-            return FastICA(n_components = ica_noncontinuum_n, whiten=True, max_iter=ica_max_iter,
-                        random_state=ica_random_state, w_init=mixing)
-        elif target_type == 'combined':
-            return FastICA(n_components = ica_noncontinuum_n, whiten=True, max_iter=ica_max_iter,
-                        random_state=ica_random_state, w_init=mixing)
+        components_ = model.components_
 
-    return None
+    return source, components_, model
 
-def get_SPCA(target_type='continuum', n=None):
-    if n is not None:
-        return SparsePCA(n_components = n, max_iter=spca_max_iter,
-                        random_state=ica_random_state, n_jobs=-1)
-    else:
-        if target_type == 'continuum':
-            return SparsePCA(n_components = ica_continuum_n, max_iter=spca_max_iter,
-                        random_state=ica_random_state, n_jobs=-1)
-        elif target_type == 'noncontinuum':
-            return SparsePCA(n_components = ica_noncontinuum_n, max_iter=spca_max_iter,
-                        random_state=ica_random_state, n_jobs=-1)
-        elif target_type == 'combined':
-            return SparsePCA(n_components = ica_noncontinuum_n, max_iter=spca_max_iter,
-                        random_state=ica_random_state, n_jobs=-1)
-
-    return None
-
-def get_PCA(target_type='continuum', n=None):
-    if n is not None:
-        return PCA(n_components = n)
-    else:
-        if target_type == 'continuum':
-            return PCA(n_components = ica_continuum_n)
-        elif target_type == 'noncontinuum':
-            return PCA(n_components = ica_noncontinuum_n)
-        elif target_type == 'combined':
-            return PCA(n_components = ica_noncontinuum_n)
-
-    return None
-
-
-
-def reduce_with_ica(flux_arr, n, mixing=None):
-    ica = get_FastICA(n=n, mixing=mixing)
-    if mixing is None:
-        sources = ica.fit(flux_arr)
-
-    sources = ica.transform(flux_arr, copy=True)
-
-    return sources, ica.mixing_, ica
-
-def reduce_with_spca(flux_arr, n):
-    spca = get_SPCA(n=n)
-    sources = spca.fit_transform(flux_arr) #
-
-    return sources, spca.components_, spca
-
-def reduce_with_pca(flux_arr, n):
-    pca = get_PCA(n=n)
-    sources = pca.fit_transform(flux_arr) #
-
-    return sources, pca.components_, pca
-
-
-def load_all_in_dir(path, use_con_flux=True, recombine_flux=False, pattern = "stacked*-continuum.csv", ivar_cutoff=0):
+def load_all_in_dir(path, pattern, ivar_cutoff=0):
     flux_list = []
     exp_list = []
     mask_list = []
@@ -220,24 +118,26 @@ def load_all_in_dir(path, use_con_flux=True, recombine_flux=False, pattern = "st
 
     for file in os.listdir(path):
         if fnmatch.fnmatch(file, pattern):
-            data = Table(Table.read(os.path.join(path, file), format="ascii.csv"), masked=True)
+            if file.endswith(".csv"):
+                data = Table(Table.read(os.path.join(path, file), format="ascii.csv"), masked=True)
+            elif file.endswith(".fits"):
+                data = Table(Table.read(os.path.join(path, file), format="fits"), masked=True)
+
             mask = data['ivar'] <= ivar_cutoff
             ivar_list.append(np.array(data['ivar'], copy=False))
 
             exp = file.split("-")[2][3:]
             if exp.endswith("csv"):
                 exp = int(exp[:-4])
+            elif exp.endswith("fits"):
+                exp = int(exp[:-5])
             else:
                 exp = int(exp)
 
             if wavelengths is None:
                 wavelengths = np.array(data['wavelength'], copy=False)
 
-            if not recombine_flux:
-                y_col = 'con_flux' if use_con_flux else 'flux'
-                flux_list.append(np.array(data[y_col], copy=False))
-            else:
-                flux_list.append(np.array(data['con_flux'] + data['flux'], copy=False))
+            flux_list.append(np.array(data['flux'], copy=False))
             mask_list.append(mask)
             exp_list.append(exp)
 

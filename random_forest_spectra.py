@@ -28,9 +28,9 @@ import os
 import os.path
 import sys
 
+from astropy.utils.compat import argparse
+
 rfr_random_state = 456371
-hide_plots=True #False
-use_spca=False #True
 
 include_linear = True
 linear_only = True
@@ -84,31 +84,44 @@ def trim_observation_metadata(data, copy=False):
     return data
 
 def main():
-    metadata_path = ".."
-    spectra_path = "."
-    test_ind = 0
-    target_types = 'combined'
-    #target_types = 'continuum'
-
-    if len(sys.argv) == 2:
-        metadata_path = sys.argv[1]
-    if len(sys.argv) == 3:
-        metadata_path = sys.argv[1]
-        spectra_path = sys.argv[2]
-    if len(sys.argv) == 4:
-        metadata_path = sys.argv[1]
-        spectra_path = sys.argv[2]
-        test_inds = sys.argv[3].split(",")
-    if len(sys.argv) == 5:
-        metadata_path = sys.argv[1]
-        spectra_path = sys.argv[2]
-        test_inds = sys.argv[3].split(",")
-        target_types = sys.argv[4]
-
-    if target_types == 'both':
-        target_types = ['continuum', 'noncontinuum']
-    else:
-        target_types = [target_types]
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description='Build a model to prediction sky spectra based on input metadata')
+    parser.add_argument(
+        '--metadata_path', type=str, default='.', metavar='METADATA_PATH',
+        help='Metadata path to work from, if not ''.'''
+    )
+    parser.add_argument(
+        '--spectra_path', type=str, default='.', metavar='SPECTRA_PATH',
+        help='Spectra path to work from, if not ''.'''
+    )
+    parser.add_argument(
+        '--test_inds', type=str, default='0', metavar='TEST_INDS',
+        help='Either a single index (file order) or ''ALL,start,end'''
+    )
+    parser.add_argument(
+        '--show_plots', action='store_true', metavar='SHOW_PLOTS',
+        help='Whether or not to show actual vs. model plots'
+    )
+    parser.add_argument(
+        '--red_method', type=str, default='ICA', metavar='RED_METHOD',
+        help='Which dimensionality reduction results to (attempt to) use'
+    )
+    parser.add_argument(
+        '--save_model', action='store_true', metavar='SAVE_MODEL',
+        help='Whether to save the model out'
+    )
+    parser.add_argument(
+        '--load_model', action='store_true', metavar='LOAD_MODEL',
+        help='Whether to load the model in'
+    )
+    parser.add_argument(
+        '--model_file', type=str, default=None, metavar='MODEL_FILE',
+        help='Model file to use for --load_model and --save_model'
+    )
+    parser.add_argument(
+        '--model_type', type=str, default='ERF'
+    )
 
     wavelengths = None
     for target_type in target_types:

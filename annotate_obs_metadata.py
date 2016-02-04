@@ -12,6 +12,8 @@ import bossdata.spec as bdspec
 
 from progressbar import ProgressBar, Percentage, Bar
 
+from astropy.utils.compat import argparse
+
 ephemeris_block_size_minutes = 15
 ephemeris_block_size = dt.timedelta(minutes=ephemeris_block_size_minutes)
 ephemeris_max_block_size = dt.timedelta(minutes=1.5*ephemeris_block_size_minutes)
@@ -111,12 +113,38 @@ def round_tai(tai):
     return tai + tdelta
 
 def main():
-    obs_md_table = Table.read(sys.argv[1], format="ascii.csv")
-    lunar_md_table = Table.read(sys.argv[2], format="ascii.csv")
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description='Pull metadata from FITS for PLATE/MJD combos, output.')
+
+    parser.add_argument(
+        '--obs_metadata', type=str, default=None, metavar='OBS_METADATA',
+        required=True, help='File containing observation metadata.'
+    )
+    parser.add_argument(
+        '--lunar_metadata', type=str, default=None, metavar='LUNAR_METADATA',
+        required=True, help='File containing lunar ephemeris metadata.'
+    )
+    parser.add_argument(
+        '--solar_metadata', type=str, default=None, metadata='SOLAR_METADATA',
+        required=True, help='File containing solar ephemeris metadata.'
+    )
+    parser.add_argument(
+        '--sunspot_metadata', type=str, default=None, metadata='SUNSPOT_METADATA',
+        required=True, help='File containing sunspot metadata.'
+    )
+    parser.add_argument(
+        '--output', type=str, default='FITS', metavar='OUTPUT',
+        help='Output format, either of FITS or CSV, defaults to FITS.'
+    )
+    args = parser.parse_args()
+
+    obs_md_table = Table.read(args.obs_metadata, format="ascii.csv")
+    lunar_md_table = Table.readargs.lunar_metadata, format="ascii.csv")
     lunar_md_table.rename_column('UTC', 'EPHEM_DATE')
-    solar_md_table = Table.read(sys.argv[3], format="ascii.csv")
+    solar_md_table = Table.read(args.solar_metadata, format="ascii.csv")
     solar_md_table.rename_column('UTC', 'EPHEM_DATE')
-    sunspot_md_table = Table.read(sys.argv[4], format="ascii.csv")
+    sunspot_md_table = Table.read(args.sunspot_metadata, format="ascii.csv")
 
     print "Table has {} entries".format(len(obs_md_table))
     lookup_date, obs_md_table = find_ephemeris_lookup_date(obs_md_table['TAI-BEG'], obs_md_table['TAI-END'], obs_md_table)
@@ -163,8 +191,10 @@ def main():
     obs_md_table.add_column(Column(boresight_ra_dec.transform_to('galactic').b.degree,
                                 dtype=float, name="GALACTIC_PLANE_SEP"))
     #print obs_md_table
-
-    obs_md_table.write("annotated_metadata.csv", format="ascii.csv")
+    if args.output == 'FITS':
+        obs_md_table.write("annotated_metadata.csv", format="ascii.csv")
+    elif args.output == 'CSV':
+        obs_md_table.write("annotated_metadata.fits", format="fits"))
 
 if __name__ == '__main__':
     main()

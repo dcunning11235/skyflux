@@ -24,6 +24,8 @@ from scipy.signal import argrelextrema
 
 from progressbar import ProgressBar, Percentage, Bar
 
+from astropy.utils.compat import argparse
+
 '''
 This script takes in a list of plate-mjd-fiber combos as output by e.g. bossquery for
 bossquery --what "PLATE,MJD,FIBER" \
@@ -34,12 +36,12 @@ It groups entries in this list by plate-mjd, then stacks the spectra for all fib
 in each group, per exposure (so you end up with 7 sky spectra for the 79 fibers in the
 plate-mjd 3586-55181.)
 
-Since it works with exposures and no co-adds, it must process the data a bit in order to be
+Since it works with exposures and not co-adds, it must process the data a bit in order to be
 able to stack it:  namely, resample to a regular wavelength spacing (0.975 A) over a standard
 range (3500.26 to 10422.76), combining the red and blue cameras.
 
 Each of these combined sky specta is then saved out as a CSV file named:
-    stacked_sky_{plate}-{mjd}-exp{exposure:02d}.csv
+    stacked_sky_{plate}-{mjd}-exp{exposure:02d}.csv (or .fits)
 '''
 
 finder = bdpath.Finder()
@@ -83,7 +85,6 @@ def stack_exposures(fiber_group, exposure=None, use_cframe=False):
 
     if len(exposure_list) == 0:
         if exposure is None:
-            #print spec.exposures.table, "--------------", spec.exposures.table['science'][0:(spec.num_exposures)]
             exposure_list = spec.exposures.table['science'][0:(spec.num_exposures)]
         elif hasattr(exposure, '__iter__'):
             exposure_list.extend(exposure)
@@ -104,25 +105,12 @@ def stack_exposures(fiber_group, exposure=None, use_cframe=False):
         def _get_frame_data(fiber_list, camera, exp):
             use_calibrated = True
 
-            #exposure = plan.get_exposure_name(exp, camera, fiber_list[0], calibrated=use_calibrated)
             exposure = '{0}-{1}-{2:08d}.{3}'.format('spCFrame', camera, exp, 'fits')
             frame = bdplate.FrameFile(manager.get(_prepend_frame_path(fiber_group['PLATE'][0], exposure)),
                                         1 if fiber_list[0] <= 500 else 2, use_calibrated)
             data = frame.get_valid_data(fiber_list, pixel_quality_mask=allowed_bitmask, include_sky=True, use_ivar=True)
             data['flux'] += data['sky']
 
-            '''
-            flag_arr = np.sum(data['flux'] < -0.5, 1)
-            print flag_arr
-            if np.any(flag_arr > 0):
-                print "GOT NEGATIVE SKY FLUX!!!!"
-                print fiber_group['PLATE'][0], exposure
-                #print fiber_list[np.where(flag_arr > 0)][:]
-
-                if np.any(data['flux'] < -50):
-                    flag_arr = np.sum(data['flux'] < -50, 1)
-                    print "*********FOUND IT:", fiber_list[flag_arr]
-            '''
             return data
 
         for i, exp in enumerate(exposure_list):
@@ -185,12 +173,9 @@ def resample_regular(b_data, r_data, accumulate_result, use_loglam=False, use_sk
         return grid[gt_ind-2+max_val_ind]
 
     def _find_grid_pins(resampled_row, fiber, exposure):
-        #Not trying to make work with loglam right now
-        #First, we have to find the peak around 5200.3
         data = resampled_row['flux']+resampled_row['sky']
         wavelength = resampled_row['wavelength']
 
-        #second method
         window = general_gaussian(21, p=0.5, sig=3)
         filtered = data[:peak_seek_end].copy()
         if np.any(filtered.mask) and np.any(~filtered.mask):
@@ -201,24 +186,6 @@ def resample_regular(b_data, r_data, accumulate_result, use_loglam=False, use_sk
         filtered_peak_inds = np.array(argrelextrema(filtered, np.ma.greater))
         filtered_peak_wlens = (filtered_peak_inds*0.975)+3500.26
 
-        '''
-        plt.plot(wavelength[:peak_seek_end], data[:peak_seek_end])
-        plt.plot(wavelength[:peak_seek_end], filtered)
-        plt.scatter(filtered_peak_wlens, data[filtered_peak_inds])
-        plt.scatter(filtered_trough_wlens, data[filtered_trough_inds])
-        plt.plot()
-        plt.tight_layout()
-        plt.show()
-        plt.close()
-        '''
-
-        '''
-        peak_set = np.empty((1,), dtype=pin_peaks_dtype)
-        peak_set['fiber'] = fiber
-        peak_set['exposure'] = exposure
-        for target in pin_peaks:
-            peak_set[ "target_{:0.1f}".format(target) ] = _find_closest_peak(target, wavelength, data)
-        '''
         peak_set = [fiber, exposure]
         for target in pin_peaks:
             peak_set.append(_find_closest_peak(target, wavelength, data))
@@ -259,7 +226,7 @@ def resample_regular(b_data, r_data, accumulate_result, use_loglam=False, use_sk
 
     return accumulate_result, np.vstack(pin_peaks_list)
 
-def save_stacks(stacks, fiber_group, exposures, save_clean=True):
+def save_stacks(stacks, fiber_group, exposures, output_format):
     plate = fiber_group[0]['PLATE']
     mjd = fiber_group[0]['MJD']
     for stackedexp, exp in zip(stacks, exposures):
@@ -273,15 +240,16 @@ def save_stacks(stacks, fiber_group, exposures, save_clean=True):
             #Should put in ivar cutoff here.  Like any ivar < 0.001 is excluded, regardless of flux value
         '''
         exp_table = Table(data=stackedexp)
-        exp_table.write("stacked_sky_{}-{}-exp{:02d}.csv".format(plate, mjd, exp), format="ascii.csv")
+        if output_format == "FITS":
+            exp_table.write("stacked_sky_{}-{}-exp{:02d}.fits".format(plate, mjd, exp), format="fits")
+        elif output_format == "CSV":
+            exp_table.write("stacked_sky_{}-{}-exp{:02d}.csv".format(plate, mjd, exp), format="ascii.csv")
 
 def save_pins(pins, fiber_group):
     plate = fiber_group[0]['PLATE']
     mjd = fiber_group[0]['MJD']
 
     pins_arr = np.vstack(pins)
-    #pins_arr = np.array(pins, dtype=[('fiber','i4'), ('exposure','i4'), ('target', 'f4'), ('found', 'f4')])
-    #print pins_arr
 
     names = []
     types = []
@@ -289,22 +257,33 @@ def save_pins(pins, fiber_group):
         names.append(name[0])
         types.append(name[1])
     exp_table = Table(data=pins_arr, names=names, dtype=types)
-    #, names=('fiber', 'exposure', 'target', 'found'), dtype=('i4', 'i4', 'f4', 'f4'))
-
-    #print exp_table
 
     exp_table_grouped = exp_table.group_by(['exposure'])
     for group in exp_table_grouped.groups:
-        #print group
-        #print group.dtype
+        #Bother with fits?  Think this is something want to be able to easily visually/manually muck with
         group.write("stacked_sky_{}-{}-exp{:02d}_pins.csv".format(plate, mjd, group[0]['exposure']), format="ascii.csv")
 
     return exp_table
 
 def main():
-        #old = np.seterr(all='raise')
+        parser = argparse.ArgumentParser(
+            formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+            description='Stack skt vibers from an PLATE/MJD into a single spectra.')
+        parser.add_argument(
+            '--file', type=str, default=None, metavar='FILE',
+            help='File that contains list of PLATE, MJD, FIBER which are to be stacked (by PLATE/MJD).'
+        )
+        parser.add_argument(
+            '--output', type=str, default='FITS', metavar='OUTPUT',
+            help='Output format, either of FITS or CSV, defaults to FITS.'
+        )
+        parser.add_argument(
+            '--pins', action='store_true',
+            help='Whether or not to output "pins": file with wavelengths of prominent peaks between ~4400 and 5600'
+        )
+        args = parser.parse_args()
 
-        sky_fibers_table = Table.read(sys.argv[1], format='ascii')
+        sky_fibers_table = Table.read(args.file, format='ascii')
         sky_fibers_table = sky_fibers_table.group_by(["PLATE", "MJD"])
 
         progress_bar = ProgressBar(widgets=[Percentage(), Bar()], maxval=len(sky_fibers_table)).start()
@@ -314,17 +293,14 @@ def main():
         for group in sky_fibers_table.groups:
             exposures, stacks, pin_peaks = stack_exposures(group, use_cframe=True)
 
-            save_stacks(stacks, group, exposures)
+            save_stacks(stacks, group, exposures, args.output)
 
-            save_pins(pin_peaks, group)
-            #all_pins.extend(save_pins(pin_peaks, group))
+            if args.pins:
+                save_pins(pin_peaks, group)
 
             counter += len(group)
             progress_bar.update(counter)
         progress_bar.finish()
-
-        #all_pins = vstack(all_pins)
-        #exp_table.write("stacked_sky_all_pins.csv", format="ascii.csv")
 
 if __name__ == '__main__':
     main()

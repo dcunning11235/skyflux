@@ -10,6 +10,8 @@ import bossdata.spec as bdspec
 
 from progressbar import ProgressBar, Percentage, Bar
 
+from astropy.utils.compat import argparse
+
 '''
 This script takes in a list of plate-mjd combos (as output by e.g. bossquery for
     bossquery --what "PLATE,MJD" --where "PLATE<=4500 and FIBER=1" --save plate_mjd_to_4500.dat
@@ -54,12 +56,33 @@ def file_deets(plate, mjd, gather=False):
         return exposure_data
 
 def main():
-    if len(sys.argv) == 3:
-        file_deets(plate=sys.argv[1], mjd=sys.argv[2])
-    if len(sys.argv) == 4:
-        file_deets(plate=int(sys.argv[1]), mjd=int(sys.argv[2]), fiber=int(sys.argv[3]))
-    if len(sys.argv) == 2:
-        plates_table = Table.read(sys.argv[1], format='ascii')
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description='Pull metadata from FITS for PLATE/MJD combos, output.')
+
+    parser.add_argument(
+        '--plate', type=int, default=None, metavar='PLATE',
+        help='Plate number of spectrum to plot.')
+    parser.add_argument(
+        '--mjd', type=int, default=None, metavar='MJD',
+        help='MJD of plate observation to use (can be omitted if only one value is possible)')
+    parser.add_argument(
+        '--fiber', type=int, default=1, metavar='FIBER',
+        help='Fiber number identifying the spectrum of the requested PLATE-MJD to plot.')
+    parser.add_argument(
+        '--file', type=str, default=None, metavar='FILE',
+        help='File that contains list of PLATE, MJD, FIBER records to output metadata for.'
+    )
+    parser.add_argument(
+        '--output', type=str, default='FITS', metavar='OUTPUT',
+        help='Output format, either of FITS or CSV, defaults to FITS.'
+    )
+    args = parser.parse_args()
+
+    if args.plate is not None and args.mjd is not None:
+        file_deets(plate=args.plate, mjd=args.mjd, fiber=args.fiber)
+    elif args.file is not None:
+        plates_table = Table.read(args.file, format='ascii')
 
         exposure_table_list = []
         exposure_table = None
@@ -79,7 +102,11 @@ def main():
                 exposure_table = vstack(exposure_table_list)
             else:
                 exposure_table = exposure_table_list[0]
-            exposure_table.write("exposure_metadata.csv", format="ascii.csv")
+                
+            if args.output == 'FITS':
+                exposure_table.write("exposure_metadata.csv", format="ascii.csv")
+            elif args.output == 'CSV':
+                exposure_table.write("exposure_metadata.fits", format="fits"))
 
 if __name__ == '__main__':
     main()
