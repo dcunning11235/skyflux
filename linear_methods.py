@@ -67,7 +67,7 @@ def main():
     print len(ps)
     '''
 
-    test_inds = range(0, 50)
+    test_inds = range(0, 1000)
     linear = Linear(fit_intercept=True, copy_X=True, n_jobs=-1)
     poly_linear = Pipeline([('poly', PolynomialFeatures(degree=2)),
                         ('linear', Linear(fit_intercept=True, copy_X=True, n_jobs=-1))])
@@ -88,7 +88,7 @@ def main():
         mask = (ivar_arr[test_ind] == 0) | np.isclose(lin_predictions, 0)
         if restrict_delta:
             delta_mask = mask.copy()
-            delta_mask[:2700] = True
+            delta_mask[2700:] = True
         else:
             delta_mask = mask
 

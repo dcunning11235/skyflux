@@ -13,18 +13,31 @@ path = '.'
 if len(sys.argv) == 2:
     path = sys.argv[1]
 
-fastica = ICAize.unpickle_FastICA(target_type="combined")
-'''
-for comp_i in range(min(fastica.components_.shape[0], 10)):
+fastica = ICAize.unpickle_FastICA(target_type="combined", filter_str="both")
+for comp_i in range(min(fastica.components_.shape[0], 25)):
     scale_factor = 2.4/np.max(np.abs(fastica.components_[comp_i]))
     plt.plot(stack.skyexp_wlen_out, (fastica.components_[comp_i]*scale_factor)+(5*comp_i) )
 plt.show()
 plt.close()
-'''
+
+fastica = ICAize.unpickle_FastICA(target_type="combined", filter_str="em")
+for comp_i in range(min(fastica.components_.shape[0], 25)):
+    scale_factor = 2.4/np.max(np.abs(fastica.components_[comp_i]))
+    plt.plot(stack.skyexp_wlen_out, (fastica.components_[comp_i]*scale_factor)+(5*comp_i) )
+plt.show()
+plt.close()
+
+fastica = ICAize.unpickle_FastICA(target_type="combined", filter_str="nonem")
+for comp_i in range(min(fastica.components_.shape[0], 25)):
+    scale_factor = 2.4/np.max(np.abs(fastica.components_[comp_i]))
+    plt.plot(stack.skyexp_wlen_out, (fastica.components_[comp_i]*scale_factor)+(5*comp_i) )
+plt.show()
+plt.close()
+
 
 #c_sources, c_mixing, c_exposures, c_wavelengths = rfs.load_spectra_data('.',
 #						target_type='combined', use_spca=False)
-
+'''
 loaded_pickle = False
 
 output = None
@@ -57,7 +70,7 @@ print transformed.shape
 print uw_explvar #, vw_explvar
 print uw_r2 #, vw_r2
 print mse
-
+'''
 '''
 fastica = ICAize.unpickle_PCA(target_type="combined")
 for comp_i in range(min(fastica.components_.shape[0], 10)):

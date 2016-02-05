@@ -10,7 +10,7 @@ import os.path
 import bossdata.spec as bdspec
 from numpy.lib import recfunctions as rfn
 
-def plot_it(data, key, peaks_table=None, no_con_flux=False, unmask=False, data_col=None):
+def plot_it(data, key, peaks_table=None, no_con_flux=False, unmask=False, data_col=None, title=None, stack=False):
     data = Table(data, masked=True)
     if data_col is None:
         data_col = 'flux'
@@ -36,9 +36,13 @@ def plot_it(data, key, peaks_table=None, no_con_flux=False, unmask=False, data_c
         plt.plot(data[key], data['con_flux'], color='green')
         plt.plot(data[key], val, color='orange', alpha=0.7)
     else:
-        plt.plot(data[key], [0]*len(data[key]), color='red')
-        plt.plot(data[key], val, color='orange', alpha=0.7)
-    if np.any(sigma > 0) and 'con_flux' not in data.colnames:
+        if stack:
+            plt.plot(data[key], val, alpha=0.7)
+        else:
+            plt.plot(data[key], [0]*len(data[key]), color='red')
+            plt.plot(data[key], val, color='orange', alpha=0.7)
+
+    if not stack and np.any(sigma > 0) and 'con_flux' not in data.colnames:
         plt.fill_between(data[key], val-sigma, val+sigma, color='red')
 
     if peaks_table is not None:
@@ -46,11 +50,13 @@ def plot_it(data, key, peaks_table=None, no_con_flux=False, unmask=False, data_c
             if row['total_type'] == 'line' and row['wavelength_lower_bound'] != 0:
                 plt.fill_between([row['wavelength_lower_bound'], row['wavelength_upper_bound']],
                                 [0, np.max(val)], color='gray')
-
+    if title is not None:
+        plt.suptitle(title)
     plt.tight_layout()
     #plt.ylim((np.percentile(val-sigma,0.1),np.percentile(val+sigma,99.9)))
-    plt.show()
-    plt.close()
+    if not stack:
+        plt.show()
+        plt.close()
 
 data = None
 result = None
@@ -75,7 +81,7 @@ data_as_is = []
 for file in os.listdir(path):
     if fnmatch.fnmatch(file, pattern):
         data2 = Table.read(os.path.join(path, file), format="ascii")
-        plot_it(data2, key, data_col=data_col)
+        plot_it(data2, key, data_col=data_col, title=file, stack=True)
         data_as_is.append(data2)
 
         if data is None:
@@ -89,6 +95,9 @@ for file in os.listdir(path):
             add_names = [name for name in data2.colnames if name not in [weight, key]]
             result = accumulate(np.array(data), np.array(data2), result, join=key, add=add_names, weight=weight)
 
+plt.show()
+plt.close()
+
 if result is None:
     result = data
 
@@ -96,7 +105,7 @@ peaks_table = None
 if peaks is not None:
     peaks_table = Table.read(os.path.join(path, peaks), format="ascii")
 
-plot_it(result, key, peaks_table, no_con_flux=False, unmask=True)
+    plot_it(result, key, peaks_table, no_con_flux=False, unmask=True)
 
 '''
 if 'loglam' not in result.dtype.names:

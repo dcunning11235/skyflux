@@ -22,8 +22,8 @@ from astropy.utils.compat import argparse
 
 random_state=1234975
 
-data_file = "{}_sources_and_mixing.npz"
-pickle_file = "{}_pickle.pkl"
+data_file = "{}_{}_sources_and_mixing.npz"
+pickle_file = "{}_{}_pickle.pkl"
 
 def main():
     parser = argparse.ArgumentParser(
@@ -53,33 +53,59 @@ def main():
         '--max_iter', type=int, default=1200, metavar='MAX_ITER',
         help='Maximum number of iterations to allow for convergence.  For SDSS data 1000 is a safe number of ICA, while SPCA requires larger values e.g. ~2000 to ~2500'
     )
+    parser.add_argument(
+        '--filter_split_path', type=str, default=None, metavar='FILTER_SPLIT_PATH',
+        help='Path on which to find filter_split file'
+    )
+    parser.add_argument(
+        '--filter_cutpoint', type=str, default=None, metavar='FILTER_CUTPOINT',
+        help='Point at which to divide between ''normal'' flux and emission flux'
+    )
+    parser.add_argument(
+        '--which_filter', type=str, default='both', metavar='WHICH_FILTER',
+        help='Whether to use ''em''isson, ''nonem''isson, or ''both'''
+    )
     args = parser.parse_args()
 
     comb_flux_arr, comb_exposure_arr, comb_ivar_arr, comb_masks, comb_wavelengths = \
                 load_all_in_dir(args.path, use_con_flux=False, recombine_flux=False,
                                 pattern=args.pattern, ivar_cutoff=args.ivar_cutoff)
 
+    filter_split_arr = None
+    if args.filter_split_path is not None:
+        fstable = Table.read(args.filter_split_path, format="ascii.csv")
+	filter_split_arr = fstable["flux_kurtosis_per_wl"] < args.filter_cutpoint
+
     mask_summed = np.sum(comb_masks, axis=0)
     min_val_ind = np.min(np.where(mask_summed == 0))
     max_val_ind = np.max(np.where(mask_summed == 0))
     print "For data set, minimum and maximum valid indecies are:", (min_val_ind, max_val_ind)
 
+    flux_arr = comb_flux_arr
+    if filter_split_arr is not None and args.which_filter != "both":
+        flux_arr = np.array(comb_flux_arr, copy=True)
+
+        if args.which_filter == "nonem":
+            new_flux_arr[:,filter_split_arr] = 0
+        elif args.which_filter == "em":
+            new_flux_arr[:,~filter_split_arr] = 0
+
     sources, components, model = dim_reduce(flux_arr, args.n_components, args.method, args.max_iter, random_state)
-    np.savez(data_file.format(args.method), sources=sources, components=components,
+    np.savez(data_file.format(args.method, args.which_filter), sources=sources, components=components,
                 exposures=comb_exposure_arr, wavelengths=comb_wavelengths)
-    pickle(model, args.path, args.method)
+    pickle(model, args.path, args.method, args.which_filter)
+    
 
-def pickle(model, path='.', method='ICA', filename=None):
+def pickle(model, path='.', method='ICA', filter_str='both', filename=None):
     if filename is None:
-        filename = pickle_file.format(method)
-
+        filename = pickle_file.format(method, filter_str)
     output = open(os.path.join(path, filename), 'wb')
     pickle.dump(model, output)
     output.close()
 
-def unpickle(path='.', method='ICA', filename=None):
+def unpickle(path='.', method='ICA', filter_str='both', filename=None):
     if filename is None:
-        filename = pickle_file.format(method)
+        filename = pickle_file.format(method, filter_str)
     output = open(os.path.join(path, filename), 'rb')
     model = pickle.load(output)
     output.close()
